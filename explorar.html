@@ -85,7 +85,6 @@
             accent-color: #3b82f6;
         }
 
-        /* NOVAS ANIMAÇÕES DOS BOTÕES */
         .btn-action { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .btn-action:hover { transform: translateY(-5px) scale(1.1); }
         .btn-action:active { transform: scale(0.9); }
@@ -325,8 +324,6 @@
         currentPhotoIdx = 0;
         updateProfileUI();
         exibirToast("Filtros Limpos", "success");
-        const vistos = JSON.parse(localStorage.getItem('perfis_vistos') || '[]');
-if (vistos.includes(nome)) return false;
     }
 
     function exibirToast(msg, tipo = "error") {
@@ -353,21 +350,10 @@ if (vistos.includes(nome)) return false;
 
     function getProfilesFromDB() {
         let bancoGlobal = {};
-        // REMOVE O USUÁRIO LOGADO DO BANCO (SOLUÇÃO DEFINITIVA)
-const meuNome = (localStorage.getItem('userName') || "").toLowerCase().trim();
+        const usuarioLogadoNome = localStorage.getItem('userName') || localStorage.getItem('usuario_logado') || "";
+        const logadoMinusculo = usuarioLogadoNome.toLowerCase().trim();
 
-Object.keys(bancoGlobal).forEach(nome => {
-    if (nome.toLowerCase().trim() === meuNome) {
-        delete bancoGlobal[nome];
-    }
-});
         try {
-            // pega usuário logado de TODOS lugares possíveis
-const usuarioLogadoNome =
-    localStorage.getItem("userName") ||
-    localStorage.getItem("usuario_logado") ||
-    sessionStorage.getItem("userName") ||
-    "";
             if (window.parent && window.parent.usuariosDB) {
                 bancoGlobal = window.parent.usuariosDB;
             } else {
@@ -378,49 +364,27 @@ const usuarioLogadoNome =
 
         const listaBloqueados = JSON.parse(localStorage.getItem('listaBloqueados')) || [];
         const matchesExistentes = JSON.parse(localStorage.getItem('meus_matches')) || [];
-       const usuarioLogadoNome =
-    localStorage.getItem('userName') ||
-    localStorage.getItem('usuario_logado') ||
-    "";
+        const vistos = JSON.parse(localStorage.getItem('perfis_vistos') || '[]');
 
-        // Busca dados do usuário logado para saber o que ele procura
         const dadosLogado = bancoGlobal[usuarioLogadoNome] || {};
         const meuInteresse = (dadosLogado.interesse || "Todos").toLowerCase();
 
         let listaFormatada = Object.keys(bancoGlobal).filter(nome => {
-            const usuarioLogado = (localStorage.getItem('usuario_logado') || "").toLowerCase().trim();
-
-if (nome.toLowerCase().trim() === usuarioLogado) {
-    return false;
-}
+            const nomeMinusculo = nome.toLowerCase().trim();
             const u = bancoGlobal[nome];
-            const nomeNormalizado = nome.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-const logadoNormalizado = usuarioLogadoNome.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-            
-            // nunca mostrar o usuário logado
-if (nome.toLowerCase().trim() === usuarioLogadoNome.toLowerCase().trim()) {
-    return false;
-}
 
-            // Regras básicas: não mostrar eu mesmo, não mostrar Caio, não mostrar bloqueados ou matches
-            if (nomeMinusculo === "caio") return false;
             if (nomeMinusculo === logadoMinusculo) return false;
-            if (nomeMinusculo.includes("caio")) return false;
+            if (nomeMinusculo === "caio" || nomeMinusculo.includes("caio")) return false;
+            if (vistos.includes(nome) || vistos.includes(`${nome}, ${u.idade}`)) return false;
+            
             const isBloqueado = listaBloqueados.some(b => b.nome.toLowerCase().includes(nomeMinusculo));
             const isMatch = matchesExistentes.some(m => m.toLowerCase().trim() === nomeMinusculo);
             if (isBloqueado || isMatch) return false;
 
-            // LÓGICA DE INTERESSE
             const generoDela = (u.genero || "Mulher").toLowerCase();
+            if (meuInteresse === "homens") return generoDela === "homem";
+            if (meuInteresse === "mulheres") return generoDela === "mulher";
             
-            if (meuInteresse === "homens") {
-                return generoDela === "homem";
-            } else if (meuInteresse === "mulheres") {
-                return generoDela === "mulher";
-            } else if (meuInteresse === "bi" || meuInteresse === "todos") {
-                return true;
-            }
-
             return true;
         }).map(nome => {
             const u = bancoGlobal[nome];
@@ -436,16 +400,6 @@ if (nome.toLowerCase().trim() === usuarioLogadoNome.toLowerCase().trim()) {
             };
         });
 
-        if (listaFormatada.length === 0) {
-            const defaultProfiles = [
-                { name: "Duda, 20", imgs: ["https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800"], dist: "A 2km", job: "Design", bio: "Fã de trilhas.", interests: ["Trilha"], tag: "Destaque" },
-                { name: "Beatriz, 24", imgs: ["https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800"], dist: "A 5km", job: "Marketing", bio: "Fã de festivais.", interests: ["Música"], tag: "Popular" }
-            ];
-            return defaultProfiles.filter(p => {
-                const n = p.name.toLowerCase();
-                return !n.startsWith("caio") && !n.includes("caio");
-            });
-        }
         return listaFormatada;
     }
 
@@ -462,7 +416,7 @@ if (nome.toLowerCase().trim() === usuarioLogadoNome.toLowerCase().trim()) {
             card.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-white p-10 text-center">
                 <i class="fa-solid fa-earth-americas text-6xl mb-4 text-blue-500"></i>
                 <h3 class="text-2xl font-black">Fim da lista</h3>
-                <p class="text-slate-400 mt-2">Tente limpar os filtros para ver mais pessoas.</p>
+                <p class="text-slate-400 mt-2">Não há novos perfis no momento.</p>
                 <button onclick="limparFiltros()" class="mt-8 bg-blue-600 px-8 py-3 rounded-2xl font-black">RECOMEÇAR</button>
             </div>`;
             return;
@@ -537,20 +491,23 @@ if (nome.toLowerCase().trim() === usuarioLogadoNome.toLowerCase().trim()) {
     }
 
     function nextProfile(action) {
-        // salva perfis já vistos
-let vistos = JSON.parse(localStorage.getItem('perfis_vistos') || '[]');
-vistos.push(profiles[currentIdx].name);
-localStorage.setItem('perfis_vistos', JSON.stringify(vistos));
         if (!profiles || !profiles[currentIdx]) return;
         const p = profiles[currentIdx]; 
+
+        let vistos = JSON.parse(localStorage.getItem('perfis_vistos') || '[]');
+        vistos.push(p.name);
+        localStorage.setItem('perfis_vistos', JSON.stringify(vistos));
+
         if (action === 'like') {
             let curtidos = JSON.parse(localStorage.getItem('perfis_curtidos') || '[]');
-curtidos.push(p.name);
-localStorage.setItem('perfis_curtidos', JSON.stringify(curtidos));
+            curtidos.push(p.name);
+            localStorage.setItem('perfis_curtidos', JSON.stringify(curtidos));
+            
             const nomeSolo = p.name.split(',')[0].trim(); 
             const conexoes = JSON.parse(localStorage.getItem('contatos_ativos') || '{}');
             conexoes[nomeSolo] = p.imgs[0];
             localStorage.setItem('contatos_ativos', JSON.stringify(conexoes));
+            
             let matchesGeral = JSON.parse(localStorage.getItem('meus_matches') || '[]');
             if (!matchesGeral.includes(nomeSolo)) {
                 matchesGeral.push(nomeSolo);
@@ -558,6 +515,7 @@ localStorage.setItem('perfis_curtidos', JSON.stringify(curtidos));
             }
             if(window.parent && window.parent.triggerMatch) window.parent.triggerMatch();
         }
+
         card.style.transform = action === 'dislike' ? 'translateX(-150%) rotate(-20deg)' : 'translateX(150%) rotate(20deg)';
         card.style.opacity = '0';
         setTimeout(() => {
