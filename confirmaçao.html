@@ -6,6 +6,7 @@
     <title>Connect Friends | Verificação</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap');
         
@@ -48,7 +49,6 @@
             transform: scale(1.05);
         }
 
-        /* Background animado sutil */
         .bg-glow {
             position: fixed;
             top: 0;
@@ -57,6 +57,12 @@
             height: 100%;
             z-index: -1;
             background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+        }
+
+        /* Efeito de carregamento para o botão */
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -84,29 +90,27 @@
                 <input type="text" maxlength="1" class="code-input">
             </div>
 
-            <button onclick="verificarCodigo()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.98]">
+            <button id="btn-confirmar" onclick="verificarCodigo()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.98]">
                 Confirmar Identidade
             </button>
 
             <p class="mt-6 text-[10px] text-slate-500 uppercase font-bold tracking-widest">
-                Não recebeu? <a href="#" onclick="window.location.reload()" class="text-blue-500 hover:underline">Reenviar código</a>
+                Não recebeu? <a href="#" onclick="reenviarCodigo()" class="text-blue-500 hover:underline">Reenviar código</a>
             </p>
         </div>
     </div>
 
-    <script src="https://kit.fontawesome.com/your-kit-code.js" crossorigin="anonymous"></script>
-
     <script>
-        // Carrega o e-mail que foi salvo no localStorage durante o cadastro/login
+        // URL do seu servidor no Render
+        const API_URL = 'https://connect-friends-api.onrender.com';
+
         const emailSalvo = localStorage.getItem('emailPendente');
         document.getElementById('display-email').innerText = emailSalvo || "seu e-mail";
 
-        // Seleção dos inputs
         const inputs = document.querySelectorAll('.code-input');
 
-        // Lógica de navegação automática entre os inputs
+        // Navegação automática
         inputs.forEach((input, index) => {
-            // Focar no próximo ao digitar
             input.addEventListener('input', (e) => {
                 if (e.inputType === "deleteContentBackward") return;
                 if (input.value && index < inputs.length - 1) {
@@ -114,24 +118,53 @@
                 }
             });
 
-            // Voltar ao apagar
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Backspace' && !input.value && index > 0) {
                     inputs[index - 1].focus();
                 }
             });
-
-            // Colar código completo (Ctrl+V)
-            input.addEventListener('paste', (e) => {
-                const data = e.clipboardData.getData('text').slice(0, 6);
-                if (data.length === 6) {
-                    data.split('').forEach((char, i) => {
-                        inputs[i].value = char;
-                    });
-                    verificarCodigo();
-                }
-            });
         });
+
+        // Função de Reenvio integrada ao seu novo Backend
+        async function reenviarCodigo() {
+            if (!emailSalvo) return;
+
+            Swal.fire({
+                title: 'Enviando...',
+                text: 'Aguarde um momento',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            try {
+                const response = await fetch(`${API_URL}/enviar-codigo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: emailSalvo })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('codigoGerado', data.codigo);
+                    Swal.fire({ 
+                        icon: 'success', 
+                        title: 'Enviado!', 
+                        text: 'Um novo código foi enviado para seu e-mail.',
+                        background: '#1e293b', color: '#fff' 
+                    });
+                } else {
+                    throw new Error(data.message || data.error);
+                }
+            } catch (error) {
+                Swal.fire({ 
+                    icon: 'error', 
+                    title: 'Ops!', 
+                    text: error.message || 'Erro ao conectar com o servidor.',
+                    background: '#1e293b', color: '#fff' 
+                });
+            }
+        }
 
         function verificarCodigo() {
             let codigoDigitado = "";
@@ -139,52 +172,39 @@
             
             const codigoCorreto = localStorage.getItem('codigoGerado');
 
-            // Verifica se o código tem 6 dígitos antes de validar
             if (codigoDigitado.length < 6) {
                 Swal.fire({ 
                     icon: 'warning', 
                     title: 'Incompleto', 
-                    text: 'Por favor, preencha todos os campos.', 
-                    background: '#1e293b', 
-                    color: '#fff',
-                    confirmButtonColor: '#3b82f6'
+                    text: 'Digite os 6 números.', 
+                    background: '#1e293b', color: '#fff'
                 });
                 return;
             }
 
-            if (codigoDigitado === codigoCorreto) {
-                // LIBERA O ACESSO PARA O INDEX.HTML
+            if (codigoDigitado == codigoCorreto) {
                 sessionStorage.setItem('acessoPermitido', 'true');
-
+                
                 Swal.fire({ 
                     icon: 'success', 
-                    title: 'Identidade Confirmada!', 
-                    text: 'Bem-vindo ao Connect Friends',
-                    timer: 2000, 
-                    showConfirmButton: false, 
-                    background: '#1e293b', 
-                    color: '#fff' 
+                    title: 'Acesso Liberado!', 
+                    timer: 1500, 
+                    showConfirmButton: false,
+                    background: '#1e293b', color: '#fff' 
                 });
                 
-                // Limpa o estado pendente por segurança
                 localStorage.removeItem('codigoGerado');
                 
-                // Redireciona para o INDEX (que contém as barras laterais)
                 setTimeout(() => {
                     window.location.href = 'index.html';
-                }, 2000);
-
+                }, 1500);
             } else {
                 Swal.fire({ 
                     icon: 'error', 
-                    title: 'Código Inválido', 
-                    text: 'O código digitado não confere. Verifique seu e-mail.', 
-                    background: '#1e293b', 
-                    color: '#fff',
-                    confirmButtonColor: '#ef4444'
+                    title: 'Código Errado', 
+                    text: 'Tente novamente.', 
+                    background: '#1e293b', color: '#fff'
                 });
-                
-                // Limpa os campos para tentar novamente
                 inputs.forEach(input => input.value = "");
                 inputs[0].focus();
             }
