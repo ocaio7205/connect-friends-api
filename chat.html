@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Chat | Connect Friends</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        
+        /* Ajuste para funcionar dentro da div main do index */
+        .chat-container {
+            height: 100%;
+            display: flex;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .foto-grade-detalhe {
+            aspect-ratio: 1/1;
+            object-fit: cover;
+            border-radius: 1rem;
+            background-color: #334155;
+            width: 100%;
+        }
+
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* Estilo para feedback visual ao segurar a mensagem */
+        .msg-bubble-active:active {
+            transform: scale(0.96);
+            transition: transform 0.1s;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 1024px) {
+            #inbox-list, #active-chat {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                top: 0;
+                left: 0;
+            }
+            #active-chat:not(.hidden) {
+                z-index: 50;
+                display: flex !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-[#0f172a]">
+
+<div class="chat-container bg-[#0f172a] lg:p-4 gap-4 h-full">
+    
+    <aside id="inbox-list" class="w-full lg:w-96 bg-[#1e293b] flex flex-col lg:rounded-3xl shadow-sm border border-slate-800 overflow-hidden shrink-0">
+        <div class="p-6 border-b border-slate-800">
+            <h2 class="text-2xl font-black text-white tracking-tight">Mensagens</h2>
+        </div>
+
+        <div class="p-4 border-b border-slate-800 bg-[#0f172a]/50">
+            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-2">Novos Connects</p>
+            <div id="carrossel-matches" class="flex gap-4 overflow-x-auto no-scrollbar pb-2 px-2">
+                
+                <div onclick="abrirCheckout()" class="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer group">
+                    <div class="w-16 h-16 rounded-full p-1 border-2 border-amber-400 bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center relative overflow-hidden active:scale-95 transition">
+                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100" class="absolute inset-0 w-full h-full object-cover blur-sm opacity-40">
+                        <span id="contador-curtidas-real" class="relative z-10 text-white font-black text-xs shadow-sm">0</span>
+                    </div>
+                    <span class="text-[10px] font-black text-amber-500 uppercase tracking-tighter">Curtidas</span>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="container-lista-chats" class="flex-1 overflow-y-auto no-scrollbar"></div>
+    </aside>
+
+    <main id="active-chat" class="hidden flex-1 flex-col bg-[#1e293b] lg:rounded-3xl shadow-sm border border-slate-800 overflow-hidden relative">
+        <div id="chat-header-clickable" class="p-4 lg:p-5 border-b border-slate-800 flex items-center justify-between bg-[#1e293b]/90 backdrop-blur-md z-10 cursor-pointer hover:bg-slate-800/50 transition">
+            <div class="flex items-center gap-4">
+                <button onclick="event.stopPropagation(); window.voltarParaListaChat()" class="lg:hidden p-2 -ml-2 text-slate-400"><i class="fa-solid fa-chevron-left text-lg"></i></button>
+                <img id="header-foto-chat" src="" class="w-10 h-10 rounded-full object-cover border-2 border-slate-700">
+                <div>
+                    <h3 id="header-nome-chat" class="font-bold text-white leading-tight"></h3>
+                    <p class="text-[10px] font-bold text-green-500 uppercase tracking-widest">Online</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="lista-mensagens-chat" class="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 no-scrollbar bg-[#0f172a]"></div>
+
+        <div class="p-4 bg-[#1e293b] border-t border-slate-800 relative pb-safe">
+            <div class="flex items-center gap-3">
+                <div class="relative">
+                    <button onclick="toggleMenuFoto()" class="text-slate-400 hover:text-white transition p-2">
+                        <i class="fa-solid fa-camera text-xl"></i>
+                    </button>
+                    <div id="menu-foto" class="hidden absolute bottom-full left-0 mb-4 w-52 bg-[#1e293b] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden z-[100]">
+                        <button onclick="document.getElementById('input-file-foto').click(); toggleMenuFoto()" class="w-full flex items-center gap-3 p-4 hover:bg-slate-800 transition text-left">
+                            <i class="fa-solid fa-image text-blue-400"></i>
+                            <span class="text-xs font-bold text-slate-200">Foto Normal</span>
+                        </button>
+                        <div class="h-[1px] bg-slate-800"></div>
+                        <button onclick="document.getElementById('input-file-temp').click(); toggleMenuFoto()" class="w-full flex items-center gap-3 p-4 hover:bg-slate-800 transition text-left">
+                            <i class="fa-solid fa-bolt text-amber-400"></i>
+                            <span class="text-xs font-bold text-slate-200">Visualização Única</span>
+                        </button>
+                    </div>
+                </div>
+                <input type="text" id="input-chat-texto" placeholder="Sua mensagem..." class="flex-1 bg-[#0f172a] text-white border-none rounded-2xl py-3 px-5 text-sm outline-none focus:ring-1 focus:ring-blue-500/50">
+                <button onclick="window.enviarMensagemTexto()" class="w-11 h-11 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-500 transition shrink-0 active:scale-90">
+                    <i class="fa-solid fa-paper-plane text-sm"></i>
+                </button>
+                <input type="file" id="input-file-foto" class="hidden" accept="image/*" onchange="processarImagem(event, 'normal')">
+                <input type="file" id="input-file-temp" class="hidden" accept="image/*" onchange="processarImagem(event, 'temp')">
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="modal-checkout" class="hidden fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div class="relative w-full max-w-[400px] bg-[#1e293b] rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-700">
+        
+        <div class="w-full bg-gradient-to-b from-cyan-500 to-blue-600 p-10 flex flex-col items-center text-center">
+            <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 border border-white/30 backdrop-blur-md">
+                <i class="fa-solid fa-crown text-yellow-400 text-3xl"></i>
+            </div>
+            <h2 class="text-white text-3xl font-black tracking-tight">Connect Gold</h2>
+            <p class="text-white/80 text-[10px] font-bold uppercase tracking-widest mt-1">Para liberar: Revelar Curtidas</p>
+        </div>
+
+        <div class="p-8 space-y-5 text-slate-200">
+            <div class="flex items-center gap-4">
+                <div class="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center"><i class="fa-solid fa-check text-[10px] text-blue-400"></i></div>
+                <div>
+                    <p class="font-bold text-sm">Curtidas Ilimitadas</p>
+                    <p class="text-slate-400 text-[10px]">Sem limites diários</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center"><i class="fa-solid fa-star text-[10px] text-amber-400"></i></div>
+                <div>
+                    <p class="font-bold text-sm">Ver quem te curtiu</p>
+                    <p class="text-slate-400 text-[10px]">Saiba antes de dar o swipe</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-8 grid grid-cols-2 gap-4 mb-8 pt-4">
+            <div class="border-2 border-slate-700 rounded-3xl p-4 text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase">Mensal</p>
+                <p class="text-white font-black text-lg">R$ 19,90</p>
+            </div>
+            <div class="relative border-2 border-cyan-400 bg-cyan-400/10 rounded-3xl p-4 text-center">
+                <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-400 text-yellow-950 text-[8px] font-black px-3 py-1 rounded-full uppercase shadow-md whitespace-nowrap">Melhor Valor</div>
+                <p class="text-slate-400 text-[10px] font-bold uppercase">Anual</p>
+                <p class="text-white font-black text-lg">R$ 199,90</p>
+            </div>
+        </div>
+
+        <div class="px-8 pb-10 flex flex-col gap-4">
+            <button onclick="window.location.href='https://pay.seulink.com'" class="w-full py-4 bg-gradient-to-r from-cyan-400 to-blue-400 text-[#1e293b] font-black rounded-2xl uppercase text-xs tracking-widest shadow-lg active:scale-95 transition">Assinar Agora</button>
+            <button onclick="fecharCheckout()" class="text-slate-500 text-[10px] font-bold uppercase text-center tracking-widest">Não, prefiro a version limitada</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Variáveis de controle
+    window.chatAtivoId = "";
+    window.fotoAtiva = "";
+
+    // Funções de Interface
+    function toggleMenuFoto() { document.getElementById('menu-foto').classList.toggle('hidden'); }
+    function abrirCheckout() { document.getElementById('modal-checkout').classList.remove('hidden'); }
+    function fecharCheckout() { document.getElementById('modal-checkout').classList.add('hidden'); }
+
+    // NOVA FUNÇÃO: Atualiza o contador de curtidas real baseado no localStorage 'quem_me_curtiu'
+    function atualizarContadorCurtidasReal() {
+        const quemMeCurtiu = JSON.parse(localStorage.getItem('quem_me_curtiu') || '[]');
+        const total = quemMeCurtiu.length;
+        const elContador = document.getElementById('contador-curtidas-real');
+        if (elContador) {
+            elContador.innerText = total > 99 ? '99+' : total;
+        }
+    }
+
+    // --- FUNÇÃO DE DENÚNCIA (SEGURAR MENSAGEM) ---
+    function aplicarEventoDenuncia(elemento) {
+        let timerDenuncia;
+        const tempoSegurar = 700; 
+
+        const dispararDenuncia = () => {
+            Swal.fire({
+                title: 'Denunciar mensagem?',
+                text: "Esta mensagem será enviada para análise e o usuário poderá ser banido.",
+                icon: 'shield-halved',
+                showCancelButton: true,
+                confirmButtonColor: '#3b82f6',
+                cancelButtonColor: '#ef4444',
+                confirmButtonText: 'Denunciar',
+                cancelButtonText: 'Cancelar',
+                background: '#1e293b',
+                color: '#ffffff',
+                borderRadius: '1.5rem'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        title: 'Denúncia Enviada',
+                        text: 'Obrigado por manter nossa comunidade segura.',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false,
+                        background: '#1e293b',
+                        color: '#ffffff'
+                    });
+                }
+            });
+        };
+
+        // Desktop
+        elemento.addEventListener('mousedown', () => { timerDenuncia = setTimeout(dispararDenuncia, tempoSegurar); });
+        elemento.addEventListener('mouseup', () => clearTimeout(timerDenuncia));
+        elemento.addEventListener('mouseleave', () => clearTimeout(timerDenuncia));
+        elemento.addEventListener('contextmenu', (e) => e.preventDefault()); // Desativa menu padrão
+
+        // Mobile
+        elemento.addEventListener('touchstart', () => { timerDenuncia = setTimeout(dispararDenuncia, tempoSegurar); }, {passive: true});
+        elemento.addEventListener('touchend', () => clearTimeout(timerDenuncia));
+    }
+
+    // Abrir Perfil ao clicar no Header do Chat
+    document.getElementById('chat-header-clickable').onclick = function() {
+        if(window.parent.abrirPerfilDetalhado && window.chatAtivoId) {
+            const historicoMatches = JSON.parse(localStorage.getItem('conversas_historico') || '[]');
+            const dadosCompletos = historicoMatches.find(m => m.nome === window.chatAtivoId);
+            window.parent.abrirPerfilDetalhado(dadosCompletos || window.chatAtivoId);
+        }
+    };
+
+    // FUNÇÃO PARA ADICIONAR NO CARROSSEL (NOVOS MATCHES)
+    function adicionarMatchAoCarrossel(nome, foto) {
+        if (nome.toLowerCase().includes("caio")) return;
+
+        const carrossel = document.getElementById('carrossel-matches');
+        const idMatch = `match-thumb-${nome.replace(/\s+/g, '')}`;
+        
+        if (!document.getElementById(idMatch)) {
+            const divMatch = document.createElement('div');
+            divMatch.id = idMatch;
+            divMatch.onclick = () => window.abrirChatUnico(nome, foto);
+            divMatch.className = "flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer group active:scale-95 transition";
+            divMatch.innerHTML = `
+                <div class="w-16 h-16 rounded-full p-0.5 border-2 border-blue-500 overflow-hidden shadow-lg">
+                    <img src="${foto}" class="w-full h-full object-cover rounded-full">
+                </div>
+                <span class="text-[10px] font-bold text-slate-300 truncate w-16 text-center">${nome}</span>
+            `;
+            carrossel.appendChild(divMatch);
+        }
+    }
+
+    // FUNÇÃO PRINCIPAL: ABRIR CHAT
+    window.abrirChatUnico = function(nome, foto) {
+        window.chatAtivoId = nome; 
+        window.fotoAtiva = foto;
+        
+        const chatElement = document.getElementById('active-chat');
+        chatElement.classList.remove('hidden');
+        chatElement.style.display = 'flex';
+        
+        document.getElementById('header-nome-chat').innerText = nome;
+        document.getElementById('header-foto-chat').src = foto;
+        document.getElementById('lista-mensagens-chat').innerHTML = "";
+        
+        carregarHistorico(nome);
+        
+        if (window.innerWidth < 1024) {
+            document.getElementById('inbox-list').classList.add('hidden');
+        }
+        
+        const lista = document.getElementById('lista-mensagens-chat');
+        setTimeout(() => { lista.scrollTop = lista.scrollHeight; }, 100);
+    };
+
+    window.voltarParaListaChat = function() {
+        document.getElementById('inbox-list').classList.remove('hidden');
+        const chatElement = document.getElementById('active-chat');
+        chatElement.classList.add('hidden');
+        chatElement.style.display = 'none';
+    };
+
+    // --- SISTEMA DE MODERAÇÃO ADICIONADO ---
+    const TERMOS_PROIBIDOS = ["palavra1", "palavra2", "ofensa1", "ofensa2"]; // Adicione seus termos aqui
+
+    function validarConteudoTexto(texto) {
+        const t = texto.toLowerCase();
+        return TERMOS_PROIBIDOS.some(termo => t.includes(termo));
+    }
+
+    // Sistema de Mensagens
+    window.enviarMensagemTexto = function() {
+        const input = document.getElementById('input-chat-texto');
+        const texto = input.value.trim();
+        
+        if (!texto || !window.chatAtivoId) return;
+
+        // Verificação de segurança
+        if (validarConteudoTexto(texto)) {
+            Swal.fire({
+                title: 'Mensagem Bloqueada',
+                text: 'Sua mensagem contém termos que violam nossas diretrizes.',
+                icon: 'error',
+                background: '#1e293b',
+                color: '#ffffff',
+                confirmButtonColor: '#3b82f6'
+            });
+            input.value = "";
+            return;
+        }
+        
+        verificarCriarCardLista(window.chatAtivoId, window.fotoAtiva);
+        renderizarMensagem(texto, 'eu', 'texto');
+        salvarMensagem(window.chatAtivoId, texto, 'eu', 'texto');
+        atualizarUltimaMensagemLista(window.chatAtivoId, texto);
+        
+        input.value = "";
+    };
+
+    function verificarCriarCardLista(nome, foto) {
+        if (nome.toLowerCase().includes("caio")) return;
+
+        const idCard = `msg-lista-${nome.replace(/\s+/g, '')}`;
+        if (!document.getElementById(idCard)) {
+            const container = document.getElementById('container-lista-chats');
+            const novoCard = document.createElement('div');
+            novoCard.id = `card-container-${nome.replace(/\s+/g, '')}`;
+            novoCard.className = "flex items-center gap-4 p-4 hover:bg-slate-800/40 cursor-pointer border-b border-slate-800 transition";
+            novoCard.onclick = () => window.abrirChatUnico(nome, foto);
+            
+            novoCard.innerHTML = `
+                <img src="${foto}" class="w-14 h-14 rounded-full object-cover">
+                <div class="flex-1 min-w-0">
+                    <h4 class="font-bold text-white">${nome}</h4>
+                    <p id="${idCard}" class="text-xs text-slate-400 truncate">Conversa iniciada</p>
+                </div>
+            `;
+            container.prepend(novoCard);
+        }
+    }
+
+    function renderizarMensagem(conteudo, remetente, tipo = 'texto') {
+        const lista = document.getElementById('lista-mensagens-chat');
+        const div = document.createElement('div');
+        div.className = remetente === 'eu' ? "flex justify-end w-full" : "flex justify-start w-full";
+        
+        if (tipo === 'texto') {
+            const bubble = document.createElement('div');
+            bubble.className = `msg-bubble-active select-none bg-blue-600 text-white p-4 max-w-[80%] text-sm font-medium rounded-2xl ${remetente === 'eu' ? 'rounded-tr-none' : 'rounded-tl-none'} shadow-lg cursor-pointer`;
+            bubble.innerHTML = conteudo;
+            aplicarEventoDenuncia(bubble); // Adiciona denúncia
+            div.appendChild(bubble);
+        }
+        
+        lista.appendChild(div);
+        lista.scrollTop = lista.scrollHeight;
+    }
+
+    function salvarMensagem(id, t, r, tipo = 'texto') {
+        const k = `chat_msgs_${id}`;
+        const h = JSON.parse(localStorage.getItem(k) || '[]');
+        h.push({ remetente: r, texto: t, tipo: tipo });
+        localStorage.setItem(k, JSON.stringify(h));
+
+        let historicoGlobal = JSON.parse(localStorage.getItem('conversas_historico') || '[]');
+        const index = historicoGlobal.findIndex(c => c.nome === id);
+        
+        const dadosExistentes = index !== -1 ? historicoGlobal[index] : {};
+        
+        const conversaAtualizada = {
+            ...dadosExistentes,
+            nome: id,
+            foto: window.fotoAtiva,
+            ultimaMensagem: tipo === 'texto' ? t : "📷 Foto",
+            horario: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        if (index !== -1) historicoGlobal.splice(index, 1);
+        historicoGlobal.unshift(conversaAtualizada);
+        localStorage.setItem('conversas_historico', JSON.stringify(historicoGlobal));
+    }
+
+    function carregarHistorico(id) {
+        const h = JSON.parse(localStorage.getItem(`chat_msgs_${id}`) || '[]');
+        h.forEach(m => {
+            if(m.tipo === 'texto') renderizarMensagem(m.texto, m.remetente);
+            else renderizarMensagemImagem(m.texto, m.remetente, m.tipo);
+        });
+    }
+
+    function atualizarUltimaMensagemLista(id, t) {
+        const el = document.getElementById(`msg-lista-${id.replace(/\s+/g, '')}`);
+        if (el) el.innerText = t;
+    }
+
+    function processarImagem(event, tipo) {
+        const file = event.target.files[0];
+        if (file) {
+            // Moderação de foto: Alerta de diretrizes
+            Swal.fire({
+                title: 'Confirmar envio?',
+                text: "Fotos que violem as regras de convivência podem resultar no bloqueio da sua conta.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Enviar Foto',
+                cancelButtonText: 'Cancelar',
+                background: '#1e293b',
+                color: '#ffffff',
+                confirmButtonColor: '#3b82f6',
+                cancelButtonColor: '#475569',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = e.target.result;
+                        renderizarMensagemImagem(img, 'eu', tipo);
+                        salvarMensagem(window.chatAtivoId, img, 'eu', tipo);
+                        atualizarUltimaMensagemLista(window.chatAtivoId, "📷 Foto");
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+    }
+
+    function renderizarMensagemImagem(src, remetente, tipo) {
+        const lista = document.getElementById('lista-mensagens-chat');
+        const div = document.createElement('div');
+        div.className = remetente === 'eu' ? "flex justify-end w-full" : "flex justify-start w-full";
+        
+        let extraClass = tipo === 'temp' ? 'blur-md cursor-pointer' : '';
+        let iconTemp = tipo === 'temp' ? '<div class="absolute inset-0 flex items-center justify-center"><i class="fa-solid fa-bolt text-amber-400 text-3xl"></i></div>' : '';
+
+        const containerImg = document.createElement('div');
+        containerImg.className = "msg-bubble-active relative max-w-[70%] rounded-2xl overflow-hidden border-2 border-slate-700 shadow-xl cursor-pointer select-none";
+        containerImg.innerHTML = `
+            <img src="${src}" class="${extraClass} w-full h-auto block">
+            ${iconTemp}
+        `;
+        
+        aplicarEventoDenuncia(containerImg); // Adiciona denúncia na foto
+
+        if (tipo === 'temp') {
+            containerImg.onclick = () => {
+                const overlay = document.createElement('div');
+                overlay.className = "fixed inset-0 z-[10001] bg-black flex items-center justify-center p-4";
+                overlay.innerHTML = `<img src="${src}" class="max-w-full max-h-full rounded-lg shadow-2xl">`;
+                overlay.onclick = () => {
+                    overlay.remove();
+                    containerImg.innerHTML = `<div class="bg-slate-800 text-slate-500 p-4 rounded-2xl text-xs italic">Foto visualizada</div>`;
+                    containerImg.onclick = null;
+                };
+                document.body.appendChild(overlay);
+            };
+        }
+
+        div.appendChild(containerImg);
+        lista.appendChild(div);
+        lista.scrollTop = lista.scrollHeight;
+    }
+
+    window.abrirConversaAtiva = function() {
+        const chatAtivo = JSON.parse(localStorage.getItem('chat_ativo'));
+        if (chatAtivo) {
+            adicionarMatchAoCarrossel(chatAtivo.nome, chatAtivo.foto);
+            verificarCriarCardLista(chatAtivo.nome, chatAtivo.foto);
+            window.abrirChatUnico(chatAtivo.nome, chatAtivo.foto);
+            localStorage.removeItem('chat_ativo'); 
+        }
+    };
+
+    window.bloquearUsuario = function(nome) {
+        const nomeAlvo = nome || window.chatAtivoId;
+        if(!nomeAlvo) return;
+
+        // Modal de Confirmação SweetAlert2
+        Swal.fire({
+            title: 'Bloquear usuário?',
+            text: `Você tem certeza que deseja bloquear ${nomeAlvo}?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#475569',
+            confirmButtonText: 'Sim, bloquear',
+            cancelButtonText: 'Cancelar',
+            background: '#1e293b',
+            color: '#ffffff',
+            borderRadius: '1.5rem'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Lógica de Integração com Bloqueados.html
+                let listaBloqueados = JSON.parse(localStorage.getItem('listaBloqueados') || '[]');
+                const historicoAtual = JSON.parse(localStorage.getItem('conversas_historico') || '[]');
+                const dadosUsuario = historicoAtual.find(c => c.nome === nomeAlvo);
+                const fotoAlvo = dadosUsuario ? dadosUsuario.foto : (window.fotoAtiva || "");
+
+                if (!listaBloqueados.find(b => b.nome === nomeAlvo)) {
+                    listaBloqueados.push({
+                        nome: nomeAlvo,
+                        foto: fotoAlvo,
+                        data: new Date().toLocaleDateString('pt-BR')
+                    });
+                    localStorage.setItem('listaBloqueados', JSON.stringify(listaBloqueados));
+                }
+
+                // Lógica de Bloqueio Original
+                let historico = JSON.parse(localStorage.getItem('conversas_historico') || '[]');
+                historico = historico.filter(c => c.nome !== nomeAlvo);
+                localStorage.setItem('conversas_historico', JSON.stringify(historico));
+                localStorage.removeItem(`chat_msgs_${nomeAlvo}`);
+                
+                const idLimpo = nomeAlvo.replace(/\s+/g, '');
+                const card = document.getElementById(`card-container-${idLimpo}`);
+                const match = document.getElementById(`match-thumb-${idLimpo}`);
+                
+                if(card) card.remove();
+                if(match) match.remove();
+                
+                if(window.chatAtivoId === nomeAlvo) {
+                    window.voltarParaListaChat();
+                }
+
+                Swal.fire({
+                    title: 'Bloqueado!',
+                    text: 'Usuário removido com sucesso.',
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false,
+                    background: '#1e293b',
+                    color: '#ffffff',
+                    borderRadius: '1.5rem'
+                });
+            }
+        });
+    };
+function carregarMatchesDoExplorar() {
+
+    const contatos = JSON.parse(localStorage.getItem('contatos_ativos') || '{}');
+
+    Object.keys(contatos).forEach(nome => {
+
+        const foto = contatos[nome];
+
+        // adiciona no carrossel
+        adicionarMatchAoCarrossel(nome, foto);
+
+        // cria conversa na lista
+        verificarCriarCardLista(nome, foto);
+
+    });
+
+}
+    (function initChat() {
+        
+        carregarMatchesDoExplorar();
+
+        const historicoGlobal = JSON.parse(localStorage.getItem('conversas_historico') || '[]');
+        const listaBloqueados = JSON.parse(localStorage.getItem('listaBloqueados') || '[]');
+
+        historicoGlobal.forEach(chat => {
+            // Verifica se não está bloqueado antes de exibir
+            const estaBloqueado = listaBloqueados.some(b => b.nome === chat.nome);
+            if (!estaBloqueado) {
+                adicionarMatchAoCarrossel(chat.nome, chat.foto); 
+                verificarCriarCardLista(chat.nome, chat.foto);
+                atualizarUltimaMensagemLista(chat.nome, chat.ultimaMensagem);
+            }
+        });
+        
+        atualizarContadorCurtidasReal(); // Chamei a função de curtidas reais aqui
+        window.abrirConversaAtiva();
+        
+        document.getElementById('input-chat-texto').onkeydown = (e) => {
+            if(e.key === 'Enter') window.enviarMensagemTexto();
+        };
+    })();
+
+</script>
+</body>
+</html>

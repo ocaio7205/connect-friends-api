@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Connect Friends | Redefinir Senha</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        
+        :root {
+            --brand-gradient: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 50%, #a855f7 100%);
+            --dark-bg: #0f172a;
+        }
+
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: var(--dark-bg);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #f1f5f9;
+        }
+
+        .gradient-text { 
+            background: var(--brand-gradient); 
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent; 
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .input-field {
+            transition: all 0.3s ease;
+            border: 2px solid #334155;
+            background: rgba(15, 23, 42, 0.6);
+            color: white;
+            text-align: center;
+            letter-spacing: 0.5em;
+        }
+
+        .input-field:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .fade-up { animation: fadeUp 0.6s ease-out forwards; }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="w-full max-w-[440px] fade-up">
+        <div class="glass-card rounded-[2.5rem] p-8 lg:p-10">
+            
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fa-solid fa-shield-halved text-2xl text-blue-400"></i>
+                </div>
+                <h2 class="text-2xl font-black uppercase tracking-tight">Verificação</h2>
+                <p class="text-slate-400 text-sm mt-2">Insira o código de 6 dígitos enviado ao seu e-mail.</p>
+            </div>
+
+            <form onsubmit="validarCodigo(event)" class="space-y-6">
+                <div class="space-y-2">
+                    <input type="text" id="input-codigo" maxlength="6" placeholder="000000" 
+                           class="w-full px-5 py-5 rounded-2xl input-field font-black text-2xl uppercase">
+                </div>
+
+                <hr class="border-slate-800">
+
+                <div class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nova Senha</label>
+                        <input type="password" id="nova-senha" placeholder="••••••••" 
+                               class="w-full px-5 py-4 rounded-2xl border-2 border-slate-700 bg-slate-900/60 text-white focus:border-blue-500 outline-none transition-all">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Confirmar Senha</label>
+                        <input type="password" id="confirma-senha" placeholder="••••••••" 
+                               class="w-full px-5 py-4 rounded-2xl border-2 border-slate-700 bg-slate-900/60 text-white focus:border-blue-500 outline-none transition-all">
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg active:scale-[0.97] transition-all">
+                    Redefinir Senha
+                </button>
+            </form>
+
+            <div class="text-center mt-6">
+                <button onclick="window.location.href='cadastro.html'" class="text-[10px] font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest">
+                    Voltar ao Login
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Função para validar o que o usuário digitou
+        function validarCodigo(e) {
+            e.preventDefault();
+            const codigoDigitado = document.getElementById('input-codigo').value;
+            const senha = document.getElementById('nova-senha').value;
+            const confirma = document.getElementById('confirma-senha').value;
+
+            // BUSCA O CÓDIGO REAL QUE FOI SALVO PELO SERVIDOR NO NAVEGADOR
+            const codigoReal = localStorage.getItem('codigoGerado');
+
+            if(codigoDigitado.length < 6) {
+                Swal.fire({ icon: 'warning', title: 'Código incompleto', text: 'Insira os 6 dígitos.', background: '#1e293b', color: '#fff' });
+                return;
+            }
+
+            // COMPARAÇÃO REAL
+            if (codigoDigitado !== codigoReal) {
+                Swal.fire({ icon: 'error', title: 'Código Incorreto', text: 'O código digitado não confere com o enviado ao seu e-mail.', background: '#1e293b', color: '#fff' });
+                return;
+            }
+
+            if(senha.length < 8) {
+                Swal.fire({ icon: 'error', title: 'Senha Fraca', text: 'A nova senha deve ter no mínimo 8 caracteres.', background: '#1e293b', color: '#fff' });
+                return;
+            }
+
+            if(senha !== confirma) {
+                Swal.fire({ icon: 'error', title: 'Senhas Diferentes', text: 'A confirmação de senha não confere.', background: '#1e293b', color: '#fff' });
+                return;
+            }
+
+            // Feedback de Sucesso
+            const btn = e.target.querySelector('button');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Processando...';
+            btn.disabled = true;
+
+            setTimeout(() => {
+                // Limpa o código para que não possa ser usado de novo
+                localStorage.removeItem('codigoGerado');
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Senha Alterada!',
+                    text: 'Sua senha foi atualizada com sucesso. Você será redirecionado para o login.',
+                    background: '#1e293b',
+                    color: '#fff',
+                    confirmButtonColor: '#2563eb'
+                }).then(() => {
+                    window.location.href = 'cadastro.html';
+                });
+            }, 1500);
+        }
+    </script>
+</body>
+</html>

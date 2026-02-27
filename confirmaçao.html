@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect Friends | Verificação</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap');
+        
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: #0f172a; 
+            color: white; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .glass-card { 
+            background: rgba(30, 41, 59, 0.7); 
+            backdrop-filter: blur(16px); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .code-input { 
+            width: 45px; 
+            height: 55px; 
+            text-align: center; 
+            font-size: 1.5rem; 
+            font-weight: bold; 
+            background: #0f172a; 
+            border: 2px solid #334155; 
+            border-radius: 12px; 
+            color: #2dd4bf; 
+            transition: all 0.2s ease;
+        }
+
+        .code-input:focus { 
+            border-color: #3b82f6; 
+            outline: none; 
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); 
+            transform: scale(1.05);
+        }
+
+        /* Background animado sutil */
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+
+    <div class="w-full max-w-md p-6">
+        <div class="glass-card rounded-[2.5rem] p-10 text-center">
+            <div class="mb-6">
+                <div class="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fa-solid fa-shield-halved text-blue-400 text-2xl"></i>
+                </div>
+                <h2 class="text-2xl font-black mb-2">Verifique seu E-mail</h2>
+                <p class="text-slate-400 text-sm">Digite o código enviado para <br>
+                    <span id="display-email" class="text-blue-400 font-bold"></span>
+                </p>
+            </div>
+            
+            <div class="flex justify-between gap-2 mb-8" id="otp-container">
+                <input type="text" maxlength="1" class="code-input" autocomplete="one-time-code">
+                <input type="text" maxlength="1" class="code-input">
+                <input type="text" maxlength="1" class="code-input">
+                <input type="text" maxlength="1" class="code-input">
+                <input type="text" maxlength="1" class="code-input">
+                <input type="text" maxlength="1" class="code-input">
+            </div>
+
+            <button onclick="verificarCodigo()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.98]">
+                Confirmar Identidade
+            </button>
+
+            <p class="mt-6 text-[10px] text-slate-500 uppercase font-bold tracking-widest">
+                Não recebeu? <a href="#" onclick="window.location.reload()" class="text-blue-500 hover:underline">Reenviar código</a>
+            </p>
+        </div>
+    </div>
+
+    <script src="https://kit.fontawesome.com/your-kit-code.js" crossorigin="anonymous"></script>
+
+    <script>
+        // Carrega o e-mail que foi salvo no localStorage durante o cadastro/login
+        const emailSalvo = localStorage.getItem('emailPendente');
+        document.getElementById('display-email').innerText = emailSalvo || "seu e-mail";
+
+        // Seleção dos inputs
+        const inputs = document.querySelectorAll('.code-input');
+
+        // Lógica de navegação automática entre os inputs
+        inputs.forEach((input, index) => {
+            // Focar no próximo ao digitar
+            input.addEventListener('input', (e) => {
+                if (e.inputType === "deleteContentBackward") return;
+                if (input.value && index < inputs.length - 1) {
+                    inputs[index + 1].focus();
+                }
+            });
+
+            // Voltar ao apagar
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !input.value && index > 0) {
+                    inputs[index - 1].focus();
+                }
+            });
+
+            // Colar código completo (Ctrl+V)
+            input.addEventListener('paste', (e) => {
+                const data = e.clipboardData.getData('text').slice(0, 6);
+                if (data.length === 6) {
+                    data.split('').forEach((char, i) => {
+                        inputs[i].value = char;
+                    });
+                    verificarCodigo();
+                }
+            });
+        });
+
+        function verificarCodigo() {
+            let codigoDigitado = "";
+            inputs.forEach(input => codigoDigitado += input.value);
+            
+            const codigoCorreto = localStorage.getItem('codigoGerado');
+
+            // Verifica se o código tem 6 dígitos antes de validar
+            if (codigoDigitado.length < 6) {
+                Swal.fire({ 
+                    icon: 'warning', 
+                    title: 'Incompleto', 
+                    text: 'Por favor, preencha todos os campos.', 
+                    background: '#1e293b', 
+                    color: '#fff',
+                    confirmButtonColor: '#3b82f6'
+                });
+                return;
+            }
+
+            if (codigoDigitado === codigoCorreto) {
+                // LIBERA O ACESSO PARA O INDEX.HTML
+                sessionStorage.setItem('acessoPermitido', 'true');
+
+                Swal.fire({ 
+                    icon: 'success', 
+                    title: 'Identidade Confirmada!', 
+                    text: 'Bem-vindo ao Connect Friends',
+                    timer: 2000, 
+                    showConfirmButton: false, 
+                    background: '#1e293b', 
+                    color: '#fff' 
+                });
+                
+                // Limpa o estado pendente por segurança
+                localStorage.removeItem('codigoGerado');
+                
+                // Redireciona para o INDEX (que contém as barras laterais)
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
+
+            } else {
+                Swal.fire({ 
+                    icon: 'error', 
+                    title: 'Código Inválido', 
+                    text: 'O código digitado não confere. Verifique seu e-mail.', 
+                    background: '#1e293b', 
+                    color: '#fff',
+                    confirmButtonColor: '#ef4444'
+                });
+                
+                // Limpa os campos para tentar novamente
+                inputs.forEach(input => input.value = "");
+                inputs[0].focus();
+            }
+        }
+    </script>
+</body>
+</html>
