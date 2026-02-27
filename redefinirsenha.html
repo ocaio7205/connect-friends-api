@@ -26,12 +26,6 @@
             color: #f1f5f9;
         }
 
-        .gradient-text { 
-            background: var(--brand-gradient); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent; 
-        }
-
         .glass-card {
             background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(16px);
@@ -44,13 +38,11 @@
             border: 2px solid #334155;
             background: rgba(15, 23, 42, 0.6);
             color: white;
-            text-align: center;
-            letter-spacing: 0.5em;
+            outline: none;
         }
 
         .input-field:focus {
             border-color: #3b82f6;
-            outline: none;
             box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
         }
 
@@ -68,35 +60,49 @@
             
             <div class="text-center mb-8">
                 <div class="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <i class="fa-solid fa-shield-halved text-2xl text-blue-400"></i>
+                    <i class="fa-solid fa-key text-2xl text-blue-400"></i>
                 </div>
-                <h2 class="text-2xl font-black uppercase tracking-tight">Verificação</h2>
-                <p class="text-slate-400 text-sm mt-2">Insira o código de 6 dígitos enviado ao seu e-mail.</p>
+                <h2 class="text-2xl font-black uppercase tracking-tight">Redefinir Senha</h2>
+                <p class="text-slate-400 text-sm mt-2">Recupere o acesso à sua conta Connect Friends.</p>
             </div>
 
-            <form onsubmit="validarCodigo(event)" class="space-y-6">
+            <form onsubmit="validarCodigo(event)" class="space-y-5">
+                
                 <div class="space-y-2">
-                    <input type="text" id="input-codigo" maxlength="6" placeholder="000000" 
-                           class="w-full px-5 py-5 rounded-2xl input-field font-black text-2xl uppercase">
+                    <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">E-mail da Conta</label>
+                    <div class="flex gap-2">
+                        <input type="email" id="email-recuperacao" placeholder="exemplo@email.com" 
+                               class="flex-1 px-5 py-4 rounded-2xl input-field text-sm">
+                        <button type="button" onclick="solicitarCodigo()" class="px-4 bg-slate-800 hover:bg-slate-700 rounded-2xl transition-all border border-slate-700">
+                            <i class="fa-solid fa-paper-plane text-blue-400"></i>
+                        </button>
+                    </div>
                 </div>
 
-                <hr class="border-slate-800">
+                <hr class="border-slate-800 my-4">
 
                 <div class="space-y-4">
                     <div class="space-y-2">
-                        <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nova Senha</label>
-                        <input type="password" id="nova-senha" placeholder="••••••••" 
-                               class="w-full px-5 py-4 rounded-2xl border-2 border-slate-700 bg-slate-900/60 text-white focus:border-blue-500 outline-none transition-all">
+                        <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Código de 6 Dígitos</label>
+                        <input type="text" id="input-codigo" maxlength="6" placeholder="000000" 
+                               class="w-full px-5 py-4 rounded-2xl input-field font-black text-xl text-center tracking-[0.3em]">
                     </div>
+
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nova Senha</label>
+                        <input type="password" id="nova-senha" placeholder="Mínimo 8 caracteres" 
+                               class="w-full px-5 py-4 rounded-2xl input-field text-sm">
+                    </div>
+
                     <div class="space-y-2">
                         <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Confirmar Senha</label>
                         <input type="password" id="confirma-senha" placeholder="••••••••" 
-                               class="w-full px-5 py-4 rounded-2xl border-2 border-slate-700 bg-slate-900/60 text-white focus:border-blue-500 outline-none transition-all">
+                               class="w-full px-5 py-4 rounded-2xl input-field text-sm">
                     </div>
                 </div>
 
-                <button type="submit" class="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg active:scale-[0.97] transition-all">
-                    Redefinir Senha
+                <button type="submit" id="btn-submit" class="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg active:scale-[0.97] transition-all">
+                    Atualizar Senha
                 </button>
             </form>
 
@@ -109,57 +115,83 @@
     </div>
 
     <script>
-        // Função para validar o que o usuário digitou
+        const API_URL = 'https://connect-friends-api.onrender.com';
+
+        // 1. Solicita o código ao Servidor no Render
+        async function solicitarCodigo() {
+            const email = document.getElementById('email-recuperacao').value;
+
+            if (!email.includes('@')) {
+                Swal.fire({ icon: 'error', title: 'E-mail inválido', text: 'Digite um e-mail real.', background: '#0f172a', color: '#fff' });
+                return;
+            }
+
+            Swal.fire({
+                title: 'Enviando código...',
+                text: 'Aguarde um instante',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            try {
+                const response = await fetch(`${API_URL}/enviar-codigo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('codigoGerado', data.codigo);
+                    Swal.fire({ icon: 'success', title: 'Enviado!', text: 'O código chegou no seu e-mail.', background: '#0f172a', color: '#fff' });
+                } else {
+                    throw new Error(data.error || 'Erro ao enviar');
+                }
+            } catch (error) {
+                Swal.fire({ icon: 'error', title: 'Ops!', text: 'Servidor offline ou erro no envio.', background: '#0f172a', color: '#fff' });
+            }
+        }
+
+        // 2. Valida os dados localmente antes de permitir o acesso
         function validarCodigo(e) {
             e.preventDefault();
             const codigoDigitado = document.getElementById('input-codigo').value;
             const senha = document.getElementById('nova-senha').value;
             const confirma = document.getElementById('confirma-senha').value;
-
-            // BUSCA O CÓDIGO REAL QUE FOI SALVO PELO SERVIDOR NO NAVEGADOR
             const codigoReal = localStorage.getItem('codigoGerado');
 
-            if(codigoDigitado.length < 6) {
-                Swal.fire({ icon: 'warning', title: 'Código incompleto', text: 'Insira os 6 dígitos.', background: '#1e293b', color: '#fff' });
-                return;
-            }
-
-            // COMPARAÇÃO REAL
             if (codigoDigitado !== codigoReal) {
-                Swal.fire({ icon: 'error', title: 'Código Incorreto', text: 'O código digitado não confere com o enviado ao seu e-mail.', background: '#1e293b', color: '#fff' });
+                Swal.fire({ icon: 'error', title: 'Código Errado', text: 'Verifique o e-mail novamente.', background: '#0f172a', color: '#fff' });
                 return;
             }
 
-            if(senha.length < 8) {
-                Swal.fire({ icon: 'error', title: 'Senha Fraca', text: 'A nova senha deve ter no mínimo 8 caracteres.', background: '#1e293b', color: '#fff' });
+            if (senha.length < 8) {
+                Swal.fire({ icon: 'warning', title: 'Senha Curta', text: 'Use pelo menos 8 caracteres.', background: '#0f172a', color: '#fff' });
                 return;
             }
 
-            if(senha !== confirma) {
-                Swal.fire({ icon: 'error', title: 'Senhas Diferentes', text: 'A confirmação de senha não confere.', background: '#1e293b', color: '#fff' });
+            if (senha !== confirma) {
+                Swal.fire({ icon: 'error', title: 'Diferentes', text: 'As senhas não batem.', background: '#0f172a', color: '#fff' });
                 return;
             }
 
-            // Feedback de Sucesso
-            const btn = e.target.querySelector('button');
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Processando...';
+            // Simulação de salvamento (Até conectar o Banco de Dados real)
+            const btn = document.getElementById('btn-submit');
+            btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Salvando...';
             btn.disabled = true;
 
             setTimeout(() => {
-                // Limpa o código para que não possa ser usado de novo
                 localStorage.removeItem('codigoGerado');
-
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Senha Alterada!',
-                    text: 'Sua senha foi atualizada com sucesso. Você será redirecionado para o login.',
-                    background: '#1e293b',
-                    color: '#fff',
-                    confirmButtonColor: '#2563eb'
+                Swal.fire({ 
+                    icon: 'success', 
+                    title: 'Tudo pronto!', 
+                    text: 'Sua senha foi redefinida com sucesso.', 
+                    background: '#0f172a', color: '#fff' 
                 }).then(() => {
                     window.location.href = 'cadastro.html';
                 });
-            }, 1500);
+            }, 2000);
         }
     </script>
 </body>
