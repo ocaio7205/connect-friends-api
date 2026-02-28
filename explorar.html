@@ -133,9 +133,9 @@
 
     <div id="profile-card" class="relative w-full h-[70vh] rounded-[3.5rem] overflow-hidden shadow-[0_35px_60px_-15px_rgba(0,0,0,0.5)] bg-slate-800 group transition-all">
         <div id="photo-indicators" class="absolute top-6 left-6 right-6 z-30 flex gap-2"></div>
-        <div class="absolute inset-0 z-20 flex">
-            <div onclick="changePhoto(-1)" class="w-1/2 h-full cursor-pointer"></div>
-            <div onclick="changePhoto(1)" class="w-1/2 h-full cursor-pointer"></div>
+        <div class="absolute inset-0 z-20 flex pointer-events-none">
+            <div onclick="changePhoto(-1)" class="w-1/2 h-full cursor-pointer pointer-events-auto"></div>
+            <div onclick="changePhoto(1)" class="w-1/2 h-full cursor-pointer pointer-events-auto"></div>
         </div>
         <img id="profile-img" src="" class="absolute inset-0 w-full h-full object-cover transition duration-500" alt="Foto de Perfil">
         <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8 lg:p-12 z-10 pointer-events-none">
@@ -544,16 +544,26 @@
         if (!isDragging) return;
         currentX = e.touches[0].clientX;
         const diffX = currentX - startX;
-        card.style.transform = `translateX(${diffX}px) rotate(${diffX / 10}deg)`;
+        card.style.transform = `translateX(${diffX}px) rotate(${diffX / 15}deg)`;
     });
 
-    card.addEventListener('touchend', (e) => {
+    const handleTouchEnd = (e) => {
         if (!isDragging) return;
         isDragging = false;
         const diffX = currentX - startX;
-        if (Math.abs(diffX) > window.innerWidth * 0.3) { nextProfile(diffX > 0 ? 'like' : 'dislike'); } 
-        else { card.style.transition = 'all 0.3s ease'; card.style.transform = 'translateX(0) rotate(0deg)'; }
-    });
+        
+        if (Math.abs(diffX) > window.innerWidth * 0.25) { 
+            nextProfile(diffX > 0 ? 'like' : 'dislike'); 
+        } else { 
+            card.style.transition = 'all 0.3s ease'; 
+            card.style.transform = 'translateX(0) rotate(0deg)'; 
+        }
+        currentX = 0;
+        startX = 0;
+    };
+
+    card.addEventListener('touchend', handleTouchEnd);
+    card.addEventListener('touchcancel', handleTouchEnd);
 </script>
 </body>
 </html>
