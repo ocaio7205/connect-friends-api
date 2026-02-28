@@ -255,43 +255,38 @@
 
         // --- FUNÇÃO DE ENVIO DE CÓDIGO (REUTILIZÁVEL) ---
         async function dispararFluxoVerificacao(email, btn, proximaPagina) {
-    const originalText = btn.innerHTML;
-    // Ativa o carregamento visual
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Processando...';
-    btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Processando...';
+            btn.disabled = true;
 
-    try {
-        console.log("Tentando conectar ao Render...");
-        const response = await fetch('https://connect-friends-api.onrender.com/enviar-codigo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email })
-        });
+            try {
+                console.log("Tentando conectar ao Render...");
+                const response = await fetch('https://connect-friends-api.onrender.com/enviar-codigo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
 
-        // Se o servidor estiver fora do ar ou com erro
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro interno no servidor');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Erro interno no servidor');
+                }
+
+                const data = await response.json();
+                console.log('Sucesso:', data);
+                
+                localStorage.setItem('codigoGerado', data.codigo);
+                localStorage.setItem('emailPendente', email);
+                window.location.href = proximaPagina;
+
+            } catch (error) {
+                console.error('Erro detalhado:', error);
+                alert('Causa do travamento: ' + error.message);
+                
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
-
-        const data = await response.json();
-        console.log('Sucesso:', data);
-        
-        // Se chegou aqui, o e-mail foi enviado!
-        localStorage.setItem('codigoGerado', data.codigo);
-        localStorage.setItem('emailPendente', email);
-        window.location.href = proximaPagina;
-
-    } catch (error) {
-        console.error('Erro detalhado:', error);
-        // O ALERTA ABAIXO VAI TE DIZER O QUE ESTÁ ACONTECENDO
-        alert('Causa do travamento: ' + error.message);
-        
-        // Devolve o botão ao estado normal para você tentar de novo
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }
-}
 
         async function enviarCodigoRecuperacao(btn) {
             const email = document.getElementById('email-recuperacao').value;
@@ -302,8 +297,6 @@
             e.preventDefault();
             const email = document.getElementById('login-email').value;
             const btn = e.target.querySelector('button[type="submit"]');
-            
-            // REDIRECIONA PARA CONFIRMAÇÃO.HTML APÓS ENVIAR CÓDIGO
             dispararFluxoVerificacao(email, btn, 'confirmaçao.html');
         }
 
@@ -364,12 +357,10 @@
             if (hasError) return;
 
             localStorage.setItem('userName', nomeInput);
-            localStorage.setItem('userName', nomeInput);
             localStorage.setItem('userIdade', idade);
 
             const btn = e.target.querySelector('button[type="submit"]');
             
-            // REDIRECIONA PARA CRIAÇÃOPERFIL.HTML APÓS ENVIAR CÓDIGO
             await dispararFluxoVerificacao(emailInput, btn, 'criaçãoperfil.html');
         }
     </script>
