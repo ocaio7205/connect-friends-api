@@ -77,13 +77,51 @@
                 </div>
             </div>
 
-            <button id="btn-assinar-modal" onclick="confirmarAssinatura()" class="w-full bg-gradient-to-r from-cyan-300 to-blue-400 text-slate-900 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all">
+            <button id="btn-assinar-modal" onclick="abrirPagamentoInterno()" class="w-full bg-gradient-to-r from-cyan-300 to-blue-400 text-slate-900 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all">
                 ASSINAR AGORA
             </button>
 
             <button onclick="closePremium()" class="w-full text-slate-500 text-[10px] font-bold uppercase tracking-widest hover:text-slate-300 transition-colors">
                 Não, prefiro a versão limitada
             </button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-pagamento-interno" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+    <div class="relative w-full max-w-[400px] bg-[#1e293b] rounded-[3rem] overflow-hidden shadow-2xl border border-white/10">
+        <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+            <button onclick="fecharPagamentoInterno()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-arrow-left"></i></button>
+            <h3 class="text-white font-bold">Pagamento Seguro</h3>
+            <div class="w-4"></div>
+        </div>
+        <div class="p-8 space-y-6">
+            <div class="space-y-3">
+                <button onclick="mostrarCamposCartao()" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl flex items-center gap-4 hover:border-blue-500 transition group">
+                    <div class="w-10 h-10 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-400 group-hover:bg-blue-500 group-hover:text-white transition">
+                        <i class="fa-solid fa-credit-card"></i>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-white font-bold text-sm">Cartão de Crédito</p>
+                    </div>
+                </button>
+                <button onclick="mostrarCamposCartao()" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl flex items-center gap-4 hover:border-green-500 transition group">
+                    <div class="w-10 h-10 bg-green-500/10 rounded-full flex items-center justify-center text-green-400 group-hover:bg-green-500 group-hover:text-white transition">
+                        <i class="fa-solid fa-building-columns"></i>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-white font-bold text-sm">Cartão de Débito</p>
+                    </div>
+                </button>
+            </div>
+            <div id="form-cartao-interno" class="hidden space-y-4 pt-4 border-t border-slate-800 animate-in slide-in-from-bottom-2">
+                <input type="text" placeholder="0000 0000 0000 0000" class="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white text-sm outline-none focus:ring-1 focus:ring-blue-500">
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="text" placeholder="MM/AA" class="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white text-sm outline-none focus:ring-1 focus:ring-blue-500">
+                    <input type="text" placeholder="CVV" class="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white text-sm outline-none focus:ring-1 focus:ring-blue-500">
+                </div>
+                <button onclick="processarSimulacaoFinal()" class="w-full py-4 bg-blue-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-lg active:scale-95 transition-all">Confirmar e Pagar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -118,6 +156,38 @@
     };
 
     let valorSelecionado = 199.90; // Padrão anual
+
+    // --- NOVAS FUNÇÕES DE SIMULAÇÃO DE PAGAMENTO ---
+    function abrirPagamentoInterno() {
+        closePremium();
+        document.getElementById('modal-pagamento-interno').classList.remove('hidden');
+    }
+
+    function fecharPagamentoInterno() {
+        document.getElementById('modal-pagamento-interno').classList.add('hidden');
+        document.getElementById('form-cartao-interno').classList.add('hidden');
+    }
+
+    function mostrarCamposCartao() {
+        document.getElementById('form-cartao-interno').classList.remove('hidden');
+    }
+
+    function processarSimulacaoFinal() {
+        Swal.fire({
+            title: 'Processando...',
+            text: 'Comunicando com a operadora',
+            timer: 2000,
+            timerProgressBar: true,
+            background: '#1e293b',
+            color: '#ffffff',
+            didOpen: () => { Swal.showLoading(); }
+        }).then(() => {
+            localStorage.setItem('usuario_gold', 'true');
+            fecharPagamentoInterno();
+            verificarAcessoGold();
+            document.getElementById('modal-sucesso').classList.remove('hidden');
+        });
+    }
 
     // --- FUNÇÕES DO MODAL PREMIUM ---
     function openPremium(motivo) {
@@ -206,7 +276,10 @@
             });
             const banner = document.getElementById('banner-azul');
             if(banner) banner.classList.add('hidden');
-            carregarCurtidasReais();
+            
+            // Remove o contador ou muda para ilimitado se necessário
+            const badge = document.getElementById('badge-contagem');
+            if (badge) { badge.classList.add('bg-green-500'); }
         }
     }
 
