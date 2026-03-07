@@ -1,8 +1,5 @@
 <?php
 require_once __DIR__ . "/bootstrap.php";
-
-// "Autorizar" por sessão (substitui o sessionStorage)
-start_session_secure();
 $_SESSION['acessoPermitido'] = true;
 ?>
 <!DOCTYPE html>
@@ -205,4 +202,5 @@ $_SESSION['acessoPermitido'] = true;
         .gradient-bg { background: var(--brand-gradient); }
     </style>
 </body>
+
 </html>
