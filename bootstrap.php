@@ -151,7 +151,7 @@ if (!headers_sent()) {
 /**
  * Conexão com banco
  */
->>>>>>> d59653d81926c2431c9378841d721e67246f1c46
+
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 $host = getenv('DB_HOST') ?: '';
@@ -305,4 +305,3 @@ function e(?string $value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
->>>>>>> 665cc278062e96d09826f42e686cf449116b9ab9
