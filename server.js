@@ -37,14 +37,18 @@ const recuperacaoLimiter = rateLimit({
    📧 CONFIGURAÇÃO SENDGRID
 ======================================== */
 
-if (!process.env.SENDGRID_API_KEY) {
-  console.error("❌ SENDGRID_API_KEY não encontrada!");
-  process.exit(1);
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log("✅ SendGrid configurado");
+} else {
+  console.log("⚠️ SendGrid desativado (sem API key)");
 }
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+/* ========================================
+   💬 BANCO TEMPORÁRIO DE MENSAGENS
+======================================== */
 
-console.log("✅ SendGrid configurado");
+let mensagens = [];
 
 /* ========================================
    📩 ROTA ENVIO DE CÓDIGO
@@ -100,6 +104,33 @@ app.post("/enviar-codigo", recuperacaoLimiter, async (req, res) => {
 });
 
 /* ========================================
+   📩 ENVIAR MENSAGEM
+======================================== */
+
+app.post("/mensagem", (req, res) => {
+  const mensagem = req.body;
+  mensagens.push(mensagem);
+  console.log("Nova mensagem:", mensagem);
+  res.json({
+    status: "ok"
+  });
+});
+
+/* ========================================
+   📩 BUSCAR MENSAGENS
+======================================== */
+
+app.get("/mensagens/:usuario", (req, res) => {
+  const usuario = req.params.usuario;
+
+  const msgs = mensagens.filter(
+    m => m.remetente === usuario || m.destino === usuario
+  );
+
+  res.json(msgs);
+});
+
+/* ========================================
    ❤️ ROTA TESTE
 ======================================== */
 
@@ -140,6 +171,7 @@ app.post("/usuarios", (req, res) => {
     usuario: novoUsuario
   });
 });
+
 const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, () => {
