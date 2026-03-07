@@ -135,7 +135,7 @@ require_once __DIR__ . '/mailer.php';
 /* ========= Inicializa segurança automaticamente ========= */
 security_headers();
 start_session_secure();
-=======
+
 /**
  * Connect Friends - bootstrap.php
  * Render + Railway MySQL
