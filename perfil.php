@@ -1,3 +1,9 @@
+<?php
+require_once __DIR__ . "/bootstrap.php";
+
+$meuId = require_login();
+$csrf  = csrf_token();
+?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -130,7 +136,7 @@
                     <button onclick="abrirModalEditar()" class="menu-item-text w-full px-4 py-3 text-left text-sm font-bold text-gray-600 hover:bg-gray-50 rounded-2xl flex items-center gap-3 transition">
                         <i class="fa-solid fa-user-pen text-pink-500 w-5"></i> Editar Perfil
                     </button>
-                    <button onclick="window.location.href='configuracoes.html'" class="menu-item-text w-full px-4 py-3 text-left text-sm font-bold text-gray-600 hover:bg-gray-50 rounded-2xl flex items-center gap-3 transition">
+                    <button onclick="window.location.href='configuracoes.php'" class="menu-item-text w-full px-4 py-3 text-left text-sm font-bold text-gray-600 hover:bg-gray-50 rounded-2xl flex items-center gap-3 transition">
                         <i class="fa-solid fa-gear text-blue-500 w-5"></i> Configurações
                     </button>
                     <button onclick="toggleDarkMode()" class="menu-item-text w-full px-4 py-3 text-left text-sm font-bold text-gray-600 hover:bg-gray-50 rounded-2xl flex items-center gap-3 transition">
@@ -258,321 +264,363 @@
 </div>
 
 <script>
-// Sincroniza fotos da grade com o que foi definido na criação
-let fotosPerfilGrade = JSON.parse(localStorage.getItem('userFotos')) || JSON.parse(localStorage.getItem('userPhotosGrade')) || [];
+/** ========= CONFIG ========= */
+const CSRF_TOKEN = <?= json_encode($csrf) ?>;
 
-document.addEventListener('DOMContentLoaded', () => {
-    carregarDadosPerfil();
-    if (localStorage.getItem('darkMode') === 'enabled') document.body.classList.add('dark-mode');
-    const prefSalva = localStorage.getItem('preferenciaBusca');
-    if(prefSalva) setInteresse(prefSalva, false);
+/** ========= ESTADO (sem localStorage) ========= */
+let ME = null;
+let fotosPerfilGrade = [];
+let postsCache = [];
+let postAbertoId = null;
+
+/** ========= HELPERS ========= */
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, s => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]
+  ));
+}
+
+async function apiGet(url) {
+  const r = await fetch(url, {
+    credentials: 'include',
+    headers: { 'Accept': 'application/json' }
+  });
+  const j = await r.json().catch(() => null);
+  if (!j || !j.ok) throw new Error((j && j.error) ? j.error : 'Erro');
+  return j;
+}
+
+async function apiPost(url, payload) {
+  const r = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': CSRF_TOKEN
+    },
+    body: JSON.stringify(payload || {})
+  });
+  const j = await r.json().catch(() => null);
+  if (!j || !j.ok) throw new Error((j && j.error) ? j.error : 'Erro');
+  return j;
+}
+
+/** ========= INIT ========= */
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await carregarDadosPerfil();
+    await carregarMeusPosts();
     renderizarGradeEdicao();
-    // Chamada reforçada
-    setTimeout(carregarMeusPosts, 100); 
+  } catch (e) {
+    alert(e.message || 'Erro ao carregar');
+  }
 });
 
-// Reforço extra: Garante que os posts carreguem se você voltar para a aba
-window.onfocus = function() {
-    carregarMeusPosts();
-};
+/** ========= PERFIL ========= */
+async function carregarDadosPerfil() {
+  const j = await apiGet('api_me.php');
+  ME = j.user;
 
-function carregarDadosPerfil() {
-    const nomeSalvo = localStorage.getItem('userName') || "Usuário";
-    const idadeSalva = localStorage.getItem('userIdade') || "";
-    const bioSalva = localStorage.getItem('userBio') || "Bem-vindo ao meu perfil!";
-    const fotoSalva = localStorage.getItem('userPhoto') || "https://i.pravatar.cc/150?u=me";
-    const interessesRaw = localStorage.getItem('userInteresses');
+  const nome = ME?.username || 'Usuário';
+  const foto = ME?.foto_perfil || "https://i.pravatar.cc/150?u=me";
+  const bioTxt = (ME?.bio && String(ME.bio).trim() !== '') ? ME.bio : "Bem-vindo ao meu perfil!";
+  const idadeTxt = ME?.idade ? (ME.idade + ' anos') : '';
 
-    document.getElementById('profile-name').textContent = nomeSalvo;
-    
-    // ATUALIZAÇÃO: Sincroniza nome e foto no modal antes mesmo de abrir
-    document.getElementById('modal-user-name').textContent = nomeSalvo; 
-    document.getElementById('modal-user-img').src = fotoSalva;
+  document.getElementById('profile-name').textContent = nome;
+  document.getElementById('modal-user-name').textContent = nome;
 
-    document.getElementById('profile-bio').innerHTML = `<b>${idadeSalva ? idadeSalva + ' anos' : ''}</b><br>✨ ${bioSalva}`;
-    document.getElementById('foto-preview').src = fotoSalva;
-    document.getElementById('edit-bio').value = bioSalva;
+  document.getElementById('foto-preview').src = foto;
+  document.getElementById('modal-user-img').src = foto;
 
-    if (interessesRaw) {
-        const interesses = JSON.parse(interessesRaw);
-        const container = document.getElementById('perfil-interesses');
-        container.innerHTML = '';
-        interesses.forEach(interest => {
-            const span = document.createElement('span');
-            span.className = "px-3 py-1 bg-blue-50 text-blue-600 text-[9px] font-black uppercase rounded-full border border-blue-100";
-            span.textContent = interest;
-            container.appendChild(span);
-        });
-    }
+  document.getElementById('profile-bio').innerHTML = `<b>${escapeHtml(idadeTxt)}</b><br>✨ ${escapeHtml(bioTxt)}`;
+  document.getElementById('edit-bio').value = bioTxt;
+
+  // interesses
+  const interesses = Array.isArray(ME?.interesses) ? ME.interesses : [];
+  const container = document.getElementById('perfil-interesses');
+  container.innerHTML = '';
+  interesses.forEach(interest => {
+    const span = document.createElement('span');
+    span.className = "px-3 py-1 bg-blue-50 text-blue-600 text-[9px] font-black uppercase rounded-full border border-blue-100";
+    span.textContent = interest;
+    container.appendChild(span);
+  });
+
+  // fotos grade
+  fotosPerfilGrade = Array.isArray(ME?.fotos) ? ME.fotos : [];
 }
 
+/** ========= MODAIS ========= */
 function abrirModalCriarPost() {
-    document.getElementById('modal-novo-post').classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
+  document.getElementById('modal-novo-post').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
 }
-
 function fecharModalCriarPost() {
-    document.getElementById('modal-novo-post').classList.add('hidden');
-    document.body.style.overflow = 'auto';
+  document.getElementById('modal-novo-post').classList.add('hidden');
+  document.body.style.overflow = 'auto';
 }
-
 function fecharModal() {
-    const modal = document.getElementById('modal-post');
-    modal.classList.add('hidden');
-    document.body.style.overflow = 'auto';
+  const modal = document.getElementById('modal-post');
+  modal.classList.add('hidden');
+  document.body.style.overflow = 'auto';
 }
-
-function previewNovoPost(event) {
-    const file = event.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = document.getElementById('preview-novo-post-img');
-            img.src = e.target.result;
-            img.classList.remove('hidden');
-            document.getElementById('placeholder-upload').classList.add('hidden');
-        };
-        reader.readAsDataURL(file);
-    }
-}
-
-function confirmarPostagem() {
-    const imgPreview = document.getElementById('preview-novo-post-img');
-    const imgSource = imgPreview.src;
-    const legenda = document.getElementById('legenda-novo-post').value;
-    
-    if (!imgSource || imgSource === "" || imgSource.includes('window.location')) {
-        alert("Por favor, selecione uma imagem primeiro!");
-        return;
-    }
-
-    try {
-        const novoPost = {
-            id: Date.now(),
-            usuario: localStorage.getItem('userName') || "Você",
-            avatar: localStorage.getItem('userPhoto') || "https://i.pravatar.cc/150?u=me",
-            imagem: imgSource,
-            legenda: legenda,
-            curtidas: 0,
-            comentarios: []
-        };
-        
-        let postsAtuais = JSON.parse(localStorage.getItem('meus_posts')) || [];
-        postsAtuais.unshift(novoPost);
-        localStorage.setItem('meus_posts', JSON.stringify(postsAtuais));
-        
-        // LIMPEZA DOS CAMPOS APÓS POSTAR
-        imgPreview.src = "";
-        imgPreview.classList.add('hidden');
-        document.getElementById('placeholder-upload').classList.remove('hidden');
-        document.getElementById('legenda-novo-post').value = "";
-        
-        fecharModalCriarPost();
-        carregarMeusPosts();
-    } catch (e) {
-        alert("Ops! Esta imagem é muito grande para o navegador salvar. Tente uma foto menor ou um print menos pesado.");
-        console.error("Erro no LocalStorage:", e);
-    }
-}
-
-function carregarMeusPosts() {
-    const grid = document.getElementById('feed-grid');
-    if (!grid) return;
-
-    const postsGuardados = JSON.parse(localStorage.getItem('meus_posts')) || [];
-    
-    grid.innerHTML = `
-        <div onclick="abrirModalCriarPost()" class="aspect-square rounded-[2.5rem] border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all cursor-pointer bg-white dark:bg-gray-800/50 group shadow-sm">
-            <div class="w-12 h-12 rounded-full bg-gray-50 dark:bg-gray-700 flex items-center justify-center group-hover:bg-blue-50 transition">
-                <i class="fa-solid fa-plus text-xl"></i>
-            </div>
-            <span class="text-[10px] font-black uppercase tracking-widest">Novo Post</span>
-        </div>
-    `;
-
-    postsGuardados.forEach(post => {
-        const div = document.createElement('div');
-        div.className = "rounded-[2.5rem] overflow-hidden shadow-sm aspect-square fade-in relative group cursor-pointer";
-        div.innerHTML = `
-            <img src="${post.imagem}" onclick="abrirModal('${post.imagem}')" class="w-full h-full object-cover hover:scale-105 transition duration-700">
-            <button onclick="event.stopPropagation(); excluirPost(${post.id});" class="absolute top-4 right-4 bg-black/50 backdrop-blur-md text-white w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition z-10">
-                <i class="fa-solid fa-trash-can text-xs"></i>
-            </button>
-        `;
-        grid.appendChild(div);
-    });
-
-    const countEl = document.getElementById('post-count');
-    if(countEl) countEl.textContent = postsGuardados.length;
-}
-
-function excluirPost(id) {
-    if(confirm("Excluir este post?")) {
-        let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
-        posts = posts.filter(p => p.id !== id);
-        localStorage.setItem('meus_posts', JSON.stringify(posts));
-        carregarMeusPosts();
-    }
-}
-
 function abrirModalEditar() {
-    document.getElementById('modal-editar-perfil').classList.remove('hidden');
-    document.getElementById('perfil-menu').classList.add('hidden');
-    renderizarGradeEdicao();
+  document.getElementById('modal-editar-perfil').classList.remove('hidden');
+  document.getElementById('perfil-menu').classList.add('hidden');
+  renderizarGradeEdicao();
 }
-function fecharModalEditar() { document.getElementById('modal-editar-perfil').classList.add('hidden'); }
-
-function salvarAlteracoesPerfil() {
-    localStorage.setItem('userBio', document.getElementById('edit-bio').value);
-    localStorage.setItem('userFotos', JSON.stringify(fotosPerfilGrade)); 
-    carregarDadosPerfil(); 
-    fecharModalEditar();
+function fecharModalEditar() {
+  document.getElementById('modal-editar-perfil').classList.add('hidden');
 }
 
-function renderizarGradeEdicao() {
-    const container = document.getElementById('grade-edit-fotos');
-    if(!container) return; 
-    container.innerHTML = '';
-    for (let i = 0; i < 6; i++) {
-        const div = document.createElement('div');
-        div.className = "grid-edit-item group";
-        if (fotosPerfilGrade[i]) {
-            div.innerHTML = `<img src="${fotosPerfilGrade[i]}"><button onclick="removerFotoGrade(${i})" class="btn-remove-photo"><i class="fa-solid fa-x"></i></button>`;
-        } else {
-            div.innerHTML = `<div class="w-full h-full flex items-center justify-center cursor-pointer" onclick="document.getElementById('input-grade-foto').click()"><i class="fa-solid fa-plus text-gray-300 text-xl"></i></div>`;
-        }
-        container.appendChild(div);
-    }
+function togglePerfilMenu(e) {
+  e.stopPropagation();
+  document.getElementById('perfil-menu').classList.toggle('hidden');
+}
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('perfil-menu');
+  if(menu && !menu.contains(e.target)) menu.classList.add('hidden');
+  if(e.target.id === 'modal-post') fecharModal();
+});
+
+/** ========= POSTS ========= */
+function previewNovoPost(event) {
+  const file = event.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = document.getElementById('preview-novo-post-img');
+      img.src = e.target.result;
+      img.classList.remove('hidden');
+      document.getElementById('placeholder-upload').classList.add('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
 }
 
-function processarFotoGrade(event) {
-    const file = event.target.files[0];
-    if (file && fotosPerfilGrade.length < 6) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            fotosPerfilGrade.push(e.target.result);
-            localStorage.setItem('userFotos', JSON.stringify(fotosPerfilGrade));
-            renderizarGradeEdicao();
-        };
-        reader.readAsDataURL(file);
-    }
+async function confirmarPostagem() {
+  const imgPreview = document.getElementById('preview-novo-post-img');
+  const imgSource = imgPreview.src;
+  const legenda = document.getElementById('legenda-novo-post').value;
+
+  if (!imgSource || imgSource === "") {
+    alert("Por favor, selecione uma imagem primeiro!");
+    return;
+  }
+
+  try {
+    await apiPost('api_post_criar.php', { imagem: imgSource, legenda: legenda });
+
+    // limpeza
+    imgPreview.src = "";
+    imgPreview.classList.add('hidden');
+    document.getElementById('placeholder-upload').classList.remove('hidden');
+    document.getElementById('legenda-novo-post').value = "";
+
+    fecharModalCriarPost();
+    await carregarMeusPosts();
+  } catch (e) {
+    alert(e.message || 'Erro ao postar');
+  }
 }
 
-function removerFotoGrade(index) {
-    fotosPerfilGrade.splice(index, 1);
-    localStorage.setItem('userFotos', JSON.stringify(fotosPerfilGrade));
-    renderizarGradeEdicao();
+async function carregarMeusPosts() {
+  const grid = document.getElementById('feed-grid');
+  if (!grid) return;
+
+  const j = await apiGet('api_posts_me.php');
+  postsCache = Array.isArray(j.posts) ? j.posts : [];
+
+  // mantém seu card "Novo Post" igual
+  grid.innerHTML = `
+      <div onclick="abrirModalCriarPost()" class="aspect-square rounded-[2.5rem] border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all cursor-pointer bg-white dark:bg-gray-800/50 group shadow-sm">
+          <div class="w-12 h-12 rounded-full bg-gray-50 dark:bg-gray-700 flex items-center justify-center group-hover:bg-blue-50 transition">
+              <i class="fa-solid fa-plus text-xl"></i>
+          </div>
+          <span class="text-[10px] font-black uppercase tracking-widest">Novo Post</span>
+      </div>
+  `;
+
+  postsCache.forEach(post => {
+    const div = document.createElement('div');
+    div.className = "rounded-[2.5rem] overflow-hidden shadow-sm aspect-square fade-in relative group cursor-pointer";
+    div.innerHTML = `
+      <img src="${post.imagem}" onclick="abrirModal('${post.id}')" class="w-full h-full object-cover hover:scale-105 transition duration-700">
+      <button onclick="event.stopPropagation(); excluirPost(${post.id});" class="absolute top-4 right-4 bg-black/50 backdrop-blur-md text-white w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition z-10">
+          <i class="fa-solid fa-trash-can text-xs"></i>
+      </button>
+    `;
+    grid.appendChild(div);
+  });
+
+  const countEl = document.getElementById('post-count');
+  if(countEl) countEl.textContent = postsCache.length;
 }
 
-function abrirModal(imgSrc) {
-    const posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
-    const post = posts.find(p => p.imagem === imgSrc);
+async function excluirPost(id) {
+  if(!confirm("Excluir este post?")) return;
+  try {
+    await apiPost('api_post_excluir.php', { post_id: id });
+    await carregarMeusPosts();
+  } catch (e) {
+    alert(e.message || 'Erro ao excluir');
+  }
+}
 
-    if (!post) return;
+/** ========= DETALHE DO POST (MODAL) ========= */
+async function abrirModal(postId) {
+  try {
+    const j = await apiGet('api_post_detalhe.php?post_id=' + encodeURIComponent(postId));
+    const post = j.post;
+    if(!post) return;
 
-    const nomeAtual = localStorage.getItem('userName') || "Usuário";
-    const fotoAtual = localStorage.getItem('userPhoto') || "https://i.pravatar.cc/150?u=me";
-    
-    document.getElementById('modal-img').src = imgSrc;
-    document.getElementById('modal-user-name').textContent = nomeAtual;
-    document.getElementById('modal-user-img').src = fotoAtual;
+    postAbertoId = post.id;
+
+    document.getElementById('modal-img').src = post.imagem;
+
+    // mantém nome/foto no modal com base no usuário logado
+    document.getElementById('modal-user-name').textContent = ME?.username || "Usuário";
+    document.getElementById('modal-user-img').src = ME?.foto_perfil || "https://i.pravatar.cc/150?u=me";
+
     document.getElementById('modal-likes').textContent = post.curtidas || 0;
 
     const lista = document.getElementById('lista-comentarios');
     lista.innerHTML = `<p class="text-[10px] font-black text-gray-300 uppercase tracking-widest">Comentários</p>`;
 
     (post.comentarios || []).forEach(c => {
-        const div = document.createElement('div');
-        div.className = "flex flex-col fade-in";
-        div.innerHTML = `<p class="text-sm"><span class="font-black text-gray-800 dark:text-white mr-2">${c.user}:</span><span class="text-gray-600 dark:text-gray-300">${c.text}</span></p>`;
-        lista.appendChild(div);
+      const div = document.createElement('div');
+      div.className = "flex flex-col fade-in";
+      div.innerHTML = `<p class="text-sm"><span class="font-black text-gray-800 dark:text-white mr-2">${escapeHtml(c.username)}:</span><span class="text-gray-600 dark:text-gray-300">${escapeHtml(c.comentario)}</span></p>`;
+      lista.appendChild(div);
     });
 
-    window.postAbertoId = post.id;
     document.getElementById('modal-post').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+  } catch (e) {
+    alert(e.message || 'Erro ao abrir post');
+  }
 }
 
-function adicionarComentario() {
-    const input = document.getElementById('input-comentario');
-    if (!input.value.trim()) return;
+async function adicionarComentario() {
+  const input = document.getElementById('input-comentario');
+  const txt = (input.value || '').trim();
+  if (!txt) return;
 
-    let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
-    const post = posts.find(p => p.id === window.postAbertoId);
-    if (!post) return;
-
-    const meuNome = localStorage.getItem('userName') || 'Você';
-    post.comentarios = post.comentarios || [];
-    post.comentarios.push({ user: meuNome, text: input.value });
-    localStorage.setItem('meus_posts', JSON.stringify(posts));
-
-    abrirModal(post.imagem); 
+  try {
+    await apiPost('api_comentario_add.php', { post_id: postAbertoId, comentario: txt });
     input.value = "";
+    await abrirModal(String(postAbertoId));
+  } catch (e) {
+    alert(e.message || 'Erro ao comentar');
+  }
 }
 
-function togglePerfilMenu(e) { e.stopPropagation(); document.getElementById('perfil-menu').classList.toggle('hidden'); }
-document.addEventListener('click', (e) => {
-    const menu = document.getElementById('perfil-menu');
-    if(menu && !menu.contains(e.target)) menu.classList.add('hidden');
-    if(e.target.id === 'modal-post') fecharModal();
-});
-
-function toggleDarkMode() {
-    const isDark = document.body.classList.toggle('dark-mode');
-    localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
+async function curtirPostModal() {
+  try {
+    await apiPost('api_post_like.php', { post_id: postAbertoId });
+    await abrirModal(String(postAbertoId));
+  } catch (e) {
+    alert(e.message || 'Erro ao curtir');
+  }
 }
 
-function setInteresse(tipo, notify = true) {
-    localStorage.setItem('preferenciaBusca', tipo);
-    const btnH = document.getElementById('btn-homem');
-    const btnM = document.getElementById('btn-mulher');
-    if(tipo === 'Homem') {
-        if(btnH) btnH.className = "flex-1 py-2 text-[10px] font-bold rounded-xl bg-blue-500 text-white transition-all";
-        if(btnM) btnM.className = "flex-1 py-2 text-[10px] font-bold rounded-xl border border-gray-100 text-gray-400 transition-all";
+/** ========= EDITAR PERFIL ========= */
+async function salvarAlteracoesPerfil() {
+  try {
+    const bio = document.getElementById('edit-bio').value;
+    await apiPost('api_perfil_salvar.php', { bio: bio, fotos: fotosPerfilGrade });
+    await carregarDadosPerfil();
+    fecharModalEditar();
+  } catch (e) {
+    alert(e.message || 'Erro ao salvar perfil');
+  }
+}
+
+function renderizarGradeEdicao() {
+  const container = document.getElementById('grade-edit-fotos');
+  if(!container) return; 
+  container.innerHTML = '';
+
+  for (let i = 0; i < 6; i++) {
+    const div = document.createElement('div');
+    div.className = "grid-edit-item group";
+    if (fotosPerfilGrade[i]) {
+      div.innerHTML = `<img src="${fotosPerfilGrade[i]}"><button onclick="removerFotoGrade(${i})" class="btn-remove-photo"><i class="fa-solid fa-x"></i></button>`;
     } else {
-        if(btnM) btnM.className = "flex-1 py-2 text-[10px] font-bold rounded-xl bg-pink-500 text-white transition-all";
-        if(btnH) btnH.className = "flex-1 py-2 text-[10px] font-bold rounded-xl border border-gray-100 text-gray-400 transition-all";
+      div.innerHTML = `<div class="w-full h-full flex items-center justify-center cursor-pointer" onclick="document.getElementById('input-grade-foto').click()"><i class="fa-solid fa-plus text-gray-300 text-xl"></i></div>`;
     }
+    container.appendChild(div);
+  }
 }
 
-function deletarConta() { if (confirm("⚠️ Deletar conta?")) { localStorage.clear(); window.location.href = 'capa.html'; } }
-function logout() { window.location.href = 'capa.html'; }
+function processarFotoGrade(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (fotosPerfilGrade.length >= 6) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    fotosPerfilGrade.push(e.target.result);
+    renderizarGradeEdicao();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removerFotoGrade(index) {
+  fotosPerfilGrade.splice(index, 1);
+  renderizarGradeEdicao();
+}
 
 function previewImagem(event) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        document.getElementById('foto-preview').src = e.target.result;
-        localStorage.setItem('userPhoto', e.target.result);
-        document.getElementById('modal-user-img').src = e.target.result;
-    };
-    reader.readAsDataURL(event.target.files[0]);
+  const file = event.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    // visual imediato
+    document.getElementById('foto-preview').src = e.target.result;
+    document.getElementById('modal-user-img').src = e.target.result;
+
+    // salva no banco
+    try {
+      await apiPost('api_perfil_foto.php', { foto_perfil: e.target.result });
+      await carregarDadosPerfil();
+    } catch (err) {
+      alert(err.message || 'Erro ao salvar foto');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+/** ========= OUTROS ========= */
+function toggleDarkMode() {
+  document.body.classList.toggle('dark-mode'); // sem localStorage
+}
+
+function setInteresse(tipo) {
+  // por enquanto só muda o visual (sem localStorage)
+  const btnH = document.getElementById('btn-homem');
+  const btnM = document.getElementById('btn-mulher');
+  if(tipo === 'Homem') {
+    if(btnH) btnH.className = "flex-1 py-2 text-[10px] font-bold rounded-xl bg-blue-500 text-white transition-all";
+    if(btnM) btnM.className = "flex-1 py-2 text-[10px] font-bold rounded-xl border border-gray-100 text-gray-400 transition-all";
+  } else {
+    if(btnM) btnM.className = "flex-1 py-2 text-[10px] font-bold rounded-xl bg-pink-500 text-white transition-all";
+    if(btnH) btnH.className = "flex-1 py-2 text-[10px] font-bold rounded-xl border border-gray-100 text-gray-400 transition-all";
+  }
+}
+
+function deletarConta() {
+  alert("Eu faço o delete permanente com segurança (senha + CSRF) depois, pra não correr risco.");
+}
+
+function logout() {
+  window.location.href = 'logout.php';
 }
 
 function falarComSuporte() { window.location.href = "mailto:connectfriend84@gmail.com"; }
 function alterarIdioma() { alert("Idioma: Português (Brasil)"); }
-
-function curtirPostModal() {
-    let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
-    const post = posts.find(p => p.id === window.postAbertoId);
-    if (!post) return;
-
-    post.curtido = !post.curtido;
-    if (!post.curtidas) post.curtidas = 0;
-
-    if (post.curtido) {
-        post.curtidas++;
-    } else {
-        post.curtidas = Math.max(0, post.curtidas - 1);
-    }
-
-    localStorage.setItem('meus_posts', JSON.stringify(posts));
-    document.getElementById('modal-likes').textContent = post.curtidas;
-
-    const heart = document.querySelector('#modal-post .fa-heart');
-    heart.classList.toggle('text-red-500');
-    heart.classList.toggle('fa-regular');
-    heart.classList.toggle('fa-solid');
-}
 </script>
 </body>
-</html>
+</html> 

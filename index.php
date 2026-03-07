@@ -1,3 +1,10 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . "/bootstrap.php";
+$meuId = require_login();     // ✅ tira sessionStorage (acessoPermitido) e usa sessão de verdade
+$csrf  = csrf_token();        // ✅ CSRF pronto pro fetch (POST)
+?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -227,24 +234,11 @@
 
             <div class="px-6 pb-10 pt-2">
                 <div class="grid grid-cols-3 gap-3 mb-8" id="grade-fotos-container">
+                    <?php for ($i=1; $i<=6; $i++): ?>
                     <div class="aspect-[2/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <img id="detalhe-foto-1" src="" class="w-full h-full object-cover">
+                        <img id="detalhe-foto-<?= $i ?>" src="" class="w-full h-full object-cover">
                     </div>
-                    <div class="aspect-[2/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <img id="detalhe-foto-2" src="" class="w-full h-full object-cover">
-                    </div>
-                    <div class="aspect-[2/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <img id="detalhe-foto-3" src="" class="w-full h-full object-cover">
-                    </div>
-                    <div class="aspect-[2/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <img id="detalhe-foto-4" src="" class="w-full h-full object-cover">
-                    </div>
-                    <div class="aspect-[2/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <img id="detalhe-foto-5" src="" class="w-full h-full object-cover">
-                    </div>
-                    <div class="aspect-[2/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        <img id="detalhe-foto-6" src="" class="w-full h-full object-cover">
-                    </div>
+                    <?php endfor; ?>
                 </div>
 
                 <div class="mb-6">
@@ -262,8 +256,7 @@
 
                 <div class="space-y-3 mb-8">
                     <h4 class="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500">Interesses</h4>
-                    <div id="detalhe-interesses" class="flex flex-wrap gap-2">
-                    </div>
+                    <div id="detalhe-interesses" class="flex flex-wrap gap-2"></div>
                 </div>
 
                 <button onclick="irParaChatPeloPerfil()" class="w-full py-5 gradient-bg text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-lg active:scale-95 transition-all">Mandar Mensagem</button>
@@ -316,7 +309,50 @@
     </div>
 
     <script>
-        // LÓGICA DE POSTAGEM
+        // =========================
+        // CONFIG / HELPERS (API)
+        // =========================
+        const CSRF_TOKEN = <?= json_encode($csrf, JSON_UNESCAPED_UNICODE) ?>;
+
+        async function apiFetch(url, options = {}) {
+            const opts = {
+                credentials: "include",
+                headers: {
+                    ...(options.headers || {})
+                },
+                ...options
+            };
+
+            // Se for POST/PUT/PATCH/DELETE, manda CSRF
+            const method = (opts.method || "GET").toUpperCase();
+            if (!["GET","HEAD","OPTIONS"].includes(method)) {
+                opts.headers["X-CSRF-Token"] = CSRF_TOKEN;
+
+                // Se não setou content-type e tem body objeto, vira JSON
+                if (opts.body && typeof opts.body === "object" && !(opts.body instanceof FormData)) {
+                    opts.headers["Content-Type"] = "application/json";
+                    opts.body = JSON.stringify(opts.body);
+                }
+            }
+
+            const r = await fetch(url, opts);
+            const ct = r.headers.get("content-type") || "";
+            const isJson = ct.includes("application/json");
+            const data = isJson ? await r.json() : { ok:false, error:"Resposta inválida" };
+
+            if (!data || data.ok !== true) {
+                // Se cair 401 em API, manda pra capa.php
+                if (r.status === 401) {
+                    window.location.replace("capa.php");
+                    return null;
+                }
+            }
+            return data;
+        }
+
+        // =========================
+        // LÓGICA DE POSTAGEM (API)
+        // =========================
         function abrirModalPost() {
             document.getElementById('modal-post').classList.remove('hidden');
             document.getElementById('modal-post').classList.add('flex');
@@ -339,29 +375,30 @@
             }
         }
 
-        function salvarPost() {
+        async function salvarPost() {
             const preview = document.getElementById('post-preview');
-            const legenda = document.getElementById('post-caption').value;
-            const nomeUser = localStorage.getItem('userName') || "Você";
-            const fotoUser = localStorage.getItem('userPhoto') || "https://i.pravatar.cc/150?u=me";
+            const legenda = document.getElementById('post-caption').value || "";
 
             if (!preview.src || preview.classList.contains('hidden')) {
                 alert("Por favor, selecione uma foto!");
                 return;
             }
 
-            const novoPost = {
-                id: Date.now(),
-                usuario: nomeUser,
-                avatar: fotoUser,
-                imagem: preview.src,
-                texto: legenda,
-                data: "Agora mesmo"
-            };
+            // ✅ Troca localStorage por API (posts table)
+            // Endpoint sugerido: /api/posts_create.php
+            const res = await apiFetch("/api/posts_create.php", {
+                method: "POST",
+                body: {
+                    imagem: preview.src,     // base64 (igual você já fazia)
+                    legenda: legenda
+                }
+            });
 
-            let postsExistentes = JSON.parse(localStorage.getItem('meus_posts')) || [];
-            postsExistentes.unshift(novoPost);
-            localStorage.setItem('meus_posts', JSON.stringify(postsExistentes));
+            if (!res) return;
+            if (!res.ok) {
+                alert(res.error || "Erro ao publicar.");
+                return;
+            }
 
             fecharModalPost();
             preview.src = "";
@@ -369,71 +406,64 @@
             document.getElementById('post-placeholder').classList.remove('hidden');
             document.getElementById('post-caption').value = "";
 
-            // Recarrega a página atual para refletir os posts salvos
+            // Recarrega a página atual (sem mexer no design)
             const activeBtn = document.querySelector('.active-link');
-            if (activeBtn) {
-                activeBtn.click();
-            } else {
-                loadPage('inicio');
-            }
+            if (activeBtn) activeBtn.click();
+            else loadPage('inicio');
         }
 
-        // BANCO DE DADOS
-        let usuariosDB = {};
-        window.usuarioDB = {};
+        // =========================
+        // ME (API) - tira localStorage de userName/userPhoto/userBio
+        // =========================
+        let ME_CACHE = null;
 
-        async function carregarUsuariosBanco() {
-            try {
-                const response = await fetch("https://connect-friends-api.onrender.com/usuarios");
-                if (!response.ok) throw new Error("Erro na API");
-
-                const usuarios = await response.json();
-                usuariosDB = {};
-
-                usuarios.forEach(user => {
-                    usuariosDB[user.nome] = {
-                        idade: user.idade,
-                        bio: user.bio || "Usuário do ConnectFriends",
-                        distancia: "Perto de você",
-                        foto: user.foto || `https://i.pravatar.cc/300?u=${user.nome}`,
-                        fotos: user.fotos || [user.foto || `https://i.pravatar.cc/300?u=${user.nome}`],
-                        interesses: user.interesses || ["Amizades"],
-                        profissao: user.profissao || "Membro Connect",
-                        genero: user.genero || "Mulher",
-                        interesse: user.interesse || "Todos"
-                    };
-                });
-
-                window.usuariosDB = usuariosDB;
-                localStorage.setItem("usuariosDB", JSON.stringify(usuariosDB));
-                console.log("Usuários carregados do banco:", usuariosDB);
-
-            } catch (error) {
-                console.error("Erro ao buscar usuários:", error);
+        async function getMe() {
+            if (ME_CACHE) return ME_CACHE;
+            const res = await apiFetch("/api/me.php", { method: "GET" });
+            if (res && res.ok) {
+                ME_CACHE = res.user || null;
             }
+            return ME_CACHE;
         }
 
-        function injectUserData() {
-            const nomeSalvo = localStorage.getItem('userName');
-            const idadeSalva = localStorage.getItem('userIdade');
-            const fotoSalva = localStorage.getItem('userPhoto');
+        async function injectUserData() {
+            const me = await getMe();
+            if (!me) return;
+
+            const nome = me.username || "Você";
+            const foto = me.foto_perfil || "https://i.pravatar.cc/150?u=me";
+            const idade = (me.idade ?? "");
+            const bio = (me.bio ?? "Bem-vindo!");
 
             const nameEl = document.getElementById('profile-name');
-            if (nameEl && nomeSalvo) nameEl.innerText = nomeSalvo;
+            if (nameEl) nameEl.innerText = nome;
 
             const bioEl = document.getElementById('profile-bio');
-            if (bioEl && idadeSalva) {
-                const bioTexto = localStorage.getItem('userBio') || "Bem-vindo!";
-                bioEl.innerHTML = `<b>${idadeSalva} anos</b><br>✨ ${bioTexto}`;
+            if (bioEl) {
+                const idadeTxt = idade !== "" ? `<b>${idade} anos</b><br>` : "";
+                bioEl.innerHTML = `${idadeTxt}✨ ${escapeHtml(bio)}`;
             }
 
             const imgEl = document.getElementById('foto-preview');
-            if (imgEl && fotoSalva) imgEl.src = fotoSalva;
+            if (imgEl) imgEl.src = foto;
 
             const matchMyPhoto = document.getElementById('match-my-photo');
-            if (matchMyPhoto && fotoSalva) matchMyPhoto.src = fotoSalva;
+            if (matchMyPhoto) matchMyPhoto.src = foto;
         }
 
+        function escapeHtml(str) {
+            return String(str)
+                .replaceAll("&","&amp;")
+                .replaceAll("<","&lt;")
+                .replaceAll(">","&gt;")
+                .replaceAll('"',"&quot;")
+                .replaceAll("'","&#039;");
+        }
+
+        // =========================
+        // DARK MODE (preferência visual)
+        // (mantive só isso em localStorage pq não é dado de usuário do app)
+        // =========================
         function toggleDarkMode() {
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
@@ -448,15 +478,20 @@
             });
         }
 
+        // =========================
+        // LOAD PAGES (agora em PHP)
+        // =========================
         window.loadPage = async function(pageName, element) {
             const container = document.getElementById('main-content');
             container.style.opacity = '0.5';
             try {
-                const response = await fetch(`${pageName}.html`);
+                // ✅ antes era .html — agora seu projeto é PHP
+                const response = await fetch(`${pageName}.php`, { credentials: "include" });
                 const html = await response.text();
                 
                 container.innerHTML = html;
 
+                // reinicializações que suas páginas internas usam
                 setTimeout(() => {
                     if (typeof carregarMeusPosts === "function") carregarMeusPosts();
                     if (typeof carregarDadosPerfil === "function") carregarDadosPerfil();
@@ -473,15 +508,14 @@
 
                 if (pageName === 'explorar') {
                     setTimeout(() => {
-                        if (usuariosDB && Object.keys(usuariosDB).length > 0) {
-                            localStorage.setItem("usuariosDB", JSON.stringify(usuariosDB));
-                        }
-                        if (typeof renderizarUsuarios === "function") renderizarUsuarios();
-                        else if (typeof carregarUsuarios === "function") carregarUsuarios();
+                        if (typeof renderizarUsuarios === 'function') renderizarUsuarios();
+                        else if (typeof carregarUsuarios === 'function') carregarUsuarios();
                     }, 50);
                 }
 
                 container.style.opacity = '1';
+
+                // ✅ agora puxa do banco
                 injectUserData();
                 
                 document.querySelectorAll('.nav-item').forEach(btn => 
@@ -495,6 +529,12 @@
             }
         }
 
+        // =========================
+        // MATCH / CHAT (sem localStorage)
+        // =========================
+        let TEMP_MATCH = null;
+        let CHAT_ATIVO = null;
+
         function triggerMatch() {
             const matchScreen = document.getElementById('match-screen');
             const myPhoto = document.getElementById('match-my-photo');
@@ -502,23 +542,14 @@
             const currentImg = document.getElementById('profile-img');
             const nameElement = document.getElementById('profile-name');
             const currentName = nameElement ? nameElement.innerText.split(',')[0].trim() : "Alguém";
-            
-            const fotoSalva = localStorage.getItem('userPhoto');
-            if(fotoSalva) myPhoto.src = fotoSalva;
-            if(currentImg) theirPhoto.src = currentImg.src;
 
-            const dadosMatch = {
+            if (currentImg) theirPhoto.src = currentImg.src;
+
+            // ✅ seu lado vem do /api/me.php (injectUserData já coloca)
+            TEMP_MATCH = {
                 nome: currentName,
-                foto: currentImg ? currentImg.src : (usuariosDB[currentName]?.foto || "")
+                foto: currentImg ? currentImg.src : ""
             };
-
-            localStorage.setItem('temp_match_data', JSON.stringify(dadosMatch));
-
-            let matches = JSON.parse(localStorage.getItem('meus_matches')) || [];
-            if(!matches.includes(currentName)) {
-                matches.push(currentName);
-                localStorage.setItem('meus_matches', JSON.stringify(matches));
-            }
 
             matchScreen.classList.remove('hidden');
             matchScreen.classList.add('flex');
@@ -526,49 +557,32 @@
             theirPhoto.classList.add('run-photo-right');
         }
 
-        function irParaChatDireto() {
+        async function irParaChatDireto() {
             if (window.event) window.event.preventDefault();
-            const dados = JSON.parse(localStorage.getItem('temp_match_data'));
-            if(dados) {
-                const novaConversa = {
-                    id: Date.now(),
-                    nome: dados.nome,
-                    foto: dados.foto,
-                    ultimaMensagem: "Você deu match! Diga oi.",
-                    horario: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-                let historico = JSON.parse(localStorage.getItem('conversas_historico')) || [];
-                if(!historico.find(c => c.nome === dados.nome)) {
-                    historico.unshift(novaConversa);
-                    localStorage.setItem('conversas_historico', JSON.stringify(historico));
-                }
-                localStorage.setItem('chat_ativo', JSON.stringify(novaConversa));
-                closeMatch();
-                const btnChat = document.querySelector('button[onclick*="chat"]');
-                window.loadPage('chat', btnChat); 
-            }
+            if (!TEMP_MATCH) return;
+
+            // ✅ aqui o ideal é criar/pegar match no backend e navegar pro chat
+            // Endpoint sugerido: /api/matches_ensure.php (cria match se existir)
+            // e depois /api/chat_open.php (retorna match_id)
+            //
+            // Como você ainda não mandou o chat.php, eu deixei o "gancho":
+            CHAT_ATIVO = TEMP_MATCH;
+
+            closeMatch();
+            const btnChat = document.querySelector('button[onclick*="chat"]');
+            window.loadPage('chat', btnChat);
         }
 
-        function irParaChatPeloPerfil() {
+        async function irParaChatPeloPerfil() {
             if (window.event) window.event.preventDefault();
             const nome = document.getElementById('detalhe-nome').innerText;
             const foto = document.getElementById('detalhe-foto-1').src;
-            const novaConversa = {
-                id: Date.now(),
-                nome: nome,
-                foto: foto,
-                ultimaMensagem: "Inicie uma conversa!",
-                horario: "Agora"
-            };
-            let historico = JSON.parse(localStorage.getItem('conversas_historico')) || [];
-            if(!historico.find(c => c.nome === nome)) {
-                historico.unshift(novaConversa);
-                localStorage.setItem('conversas_historico', JSON.stringify(historico));
-            }
-            localStorage.setItem('chat_ativo', JSON.stringify(novaConversa));
+
+            CHAT_ATIVO = { nome, foto };
+
             fecharPerfilDetalhado();
             const btnChat = document.querySelector('button[onclick*="chat"]');
-            window.loadPage('chat', btnChat); 
+            window.loadPage('chat', btnChat);
         }
 
         function closeMatch() {
@@ -593,62 +607,66 @@
             setTimeout(() => { document.getElementById('premium-modal').classList.add('hidden'); }, 300);
         }
 
-        window.abrirPerfilDetalhado = function(nomeOuObjeto) {
+        // =========================
+        // PERFIL DETALHADO (API)
+        // =========================
+        async function fetchPerfilPorNome(nome) {
+            // Endpoint sugerido: /api/user_by_name.php?nome=...
+            const res = await apiFetch(`/api/user_by_name.php?nome=${encodeURIComponent(nome)}`, { method: "GET" });
+            if (res && res.ok) return res.user || null;
+            return null;
+        }
+
+        window.abrirPerfilDetalhado = async function(nomeOuObjeto) {
             let perfil = null;
             let nomeBusca = "";
 
             if (typeof nomeOuObjeto === 'object' && nomeOuObjeto !== null) {
-                nomeBusca = nomeOuObjeto.nome;
+                // quando explorar/listas já passarem o objeto
+                nomeBusca = nomeOuObjeto.nome || nomeOuObjeto.username || "";
                 perfil = nomeOuObjeto;
             } else {
-                nomeBusca = nomeOuObjeto;
-                perfil = JSON.parse(localStorage.getItem(`perfil_completo_${nomeBusca}`)) || usuariosDB[nomeBusca];
-                
-                if (!perfil) {
-                    const historico = JSON.parse(localStorage.getItem('conversas_historico') || '[]');
-                    const encontrado = historico.find(c => c.nome === nomeBusca);
-                    if (encontrado) {
-                        perfil = {
-                            idade: encontrado.idade || "24",
-                            bio: encontrado.bio || "Olá! Vamos conversar?",
-                            distancia: "Perto de você",
-                            foto: encontrado.foto,
-                            interesses: ["Conectar"]
-                        };
-                    }
-                }
+                nomeBusca = String(nomeOuObjeto || "");
+                if (nomeBusca) perfil = await fetchPerfilPorNome(nomeBusca);
             }
 
-            if (perfil) {
-                document.getElementById('detalhe-nome').innerText = nomeBusca;
-                document.getElementById('detalhe-idade').innerText = perfil.idade || "24";
-                document.getElementById('detalhe-bio').innerText = perfil.bio || "";
-                document.getElementById('detalhe-distancia').innerText = perfil.distancia || "Perto de você";
+            if (!perfil) return;
 
-                const listaFotos = perfil.fotos && perfil.fotos.length > 0 ? perfil.fotos : [perfil.foto];
-                for (let i = 1; i <= 6; i++) {
-                    const imgEl = document.getElementById(`detalhe-foto-${i}`);
-                    const fotoUrl = listaFotos[i-1] || listaFotos[0]; 
-                    imgEl.src = fotoUrl;
-                    if (!listaFotos[i-1]) {
-                        imgEl.parentElement.style.opacity = "0.4";
-                    } else {
-                        imgEl.parentElement.style.opacity = "1";
-                    }
-                }
+            // Normaliza campos (sem mexer no design)
+            const idade = perfil.idade ?? perfil.age ?? "24";
+            const bio = perfil.bio ?? "";
+            const distancia = perfil.distancia ?? "Perto de você";
 
-                const containerInteresses = document.getElementById('detalhe-interesses');
-                containerInteresses.innerHTML = "";
-                const interesses = perfil.interesses || ["Amizade", "Conversar"];
-                interesses.forEach(tag => {
-                    containerInteresses.innerHTML += `<span class="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-full border border-slate-200 dark:border-slate-700">${tag}</span>`;
-                });
+            document.getElementById('detalhe-nome').innerText = nomeBusca || (perfil.username || "");
+            document.getElementById('detalhe-idade').innerText = idade;
+            document.getElementById('detalhe-bio').innerText = bio;
+            document.getElementById('detalhe-distancia').innerText = distancia;
 
-                const modal = document.getElementById('modal-perfil-detalhado');
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-                modal.style.zIndex = "9999";
+            const fotos = perfil.fotos || perfil.photos || [];
+            const primeira = perfil.foto || perfil.foto_perfil || fotos[0] || "";
+            const listaFotos = (Array.isArray(fotos) && fotos.length > 0) ? fotos : [primeira];
+
+            for (let i = 1; i <= 6; i++) {
+                const imgEl = document.getElementById(`detalhe-foto-${i}`);
+                const fotoUrl = listaFotos[i-1] || listaFotos[0] || "";
+                imgEl.src = fotoUrl;
+
+                // efeito visual igual ao seu
+                if (!listaFotos[i-1]) imgEl.parentElement.style.opacity = "0.4";
+                else imgEl.parentElement.style.opacity = "1";
             }
+
+            const containerInteresses = document.getElementById('detalhe-interesses');
+            containerInteresses.innerHTML = "";
+            const interesses = perfil.interesses || ["Amizade", "Conversar"];
+            interesses.forEach(tag => {
+                containerInteresses.innerHTML += `<span class="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(tag)}</span>`;
+            });
+
+            const modal = document.getElementById('modal-perfil-detalhado');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            modal.style.zIndex = "9999";
         };
 
         window.fecharPerfilDetalhado = function() {
@@ -676,59 +694,27 @@
             alert("Redirecionando para o Mercado Pago...");
         }
 
+        // =========================
+        // LOGOUT (real)
+        // =========================
         function fazerLogout() {
-            sessionStorage.removeItem('acessoPermitido');
-            window.location.replace('capa.html');
+            window.location.replace('logout.php');
         }
 
+        // =========================
+        // BOOT
+        // =========================
         window.onload = async () => {
-            if (!sessionStorage.getItem('acessoPermitido')) {
-                window.location.replace('capa.html');
-                return;
-            }
-
             document.getElementById('main-body').style.display = 'block';
-
-            await carregarUsuariosBanco();
-            setInterval(atualizarUsuariosAutomatico, 15000);
 
             const firstNav = document.querySelector('aside .nav-item') || document.querySelector('nav button');
             window.loadPage('inicio', firstNav);
 
             if (localStorage.getItem('darkMode') === 'enabled') toggleDarkMode();
-        }
 
-        async function atualizarUsuariosAutomatico() {
-            try {
-                const response = await fetch("https://connect-friends-api.onrender.com/usuarios");
-                if (!response.ok) return;
-
-                const usuarios = await response.json();
-                let novoBanco = {};
-
-                usuarios.forEach(user => {
-                    novoBanco[user.nome] = {
-                        idade: user.idade,
-                        bio: user.bio || "Usuário do ConnectFriends",
-                        distancia: "Perto de você",
-                        foto: user.foto || `https://i.pravatar.cc/300?u=${user.nome}`,
-                        fotos: user.fotos || [user.foto || `https://i.pravatar.cc/300?u=${user.nome}`],
-                        interesses: user.interesses || ["Amizades"],
-                        profissao: user.profissao || "Membro Connect",
-                        genero: user.genero || "Mulher",
-                        interesse: user.interesse || "Todos"
-                    };
-                });
-
-                usuariosDB = novoBanco;
-                window.usuariosDB = usuariosDB;
-                localStorage.setItem("usuariosDB", JSON.stringify(usuariosDB));
-                console.log("Usuários atualizados automaticamente");
-
-            } catch (error) {
-                console.log("Falha na atualização automática");
-            }
-        }
+            // já injeta user real
+            injectUserData();
+        };
     </script>
 </body>
 </html>

@@ -1,0 +1,420 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . "/bootstrap.php";
+$csrf = csrf_token();
+
+/*
+// ✅ DEBUG (temporário): descomente pra ver o erro real do banco na tela
+try {
+  db();
+} catch (Throwable $e) {
+  die("ERRO REAL DB: " . $e->getMessage());
+}
+*/
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Connect Friends | Acesso</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        
+        :root {
+            --brand-gradient: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 50%, #a855f7 100%);
+            --dark-bg: #0f172a;
+            --dark-card: #1e293b;
+        }
+
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: var(--dark-bg);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #f1f5f9;
+            overflow-x: hidden;
+        }
+
+        .gradient-text { 
+            background: var(--brand-gradient); 
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent; 
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .input-field {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid #334155;
+            background: rgba(15, 23, 42, 0.6);
+            color: white;
+        }
+
+        .input-field:focus {
+            border-color: #3b82f6;
+            background: rgba(15, 23, 42, 0.8);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+            outline: none;
+        }
+
+        .error-msg {
+            color: #f87171;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 4px;
+            margin-left: 8px;
+            display: none;
+        }
+
+        .tab-active {
+            color: #fff;
+            position: relative;
+        }
+
+        .tab-active::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 24px;
+            height: 4px;
+            background: var(--brand-gradient);
+            border-radius: 10px;
+        }
+
+        .fade-up {
+            animation: fadeUp 0.6s ease-out forwards;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+        }
+
+        /* Modal Styles */
+        #modal-recuperar {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="fixed top-0 left-0 w-full h-full z-[-1] overflow-hidden">
+        <div class="absolute top-[-10%] left-[-10%] w-[400px] h-[400px] bg-blue-600/20 rounded-full blur-[120px]"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-purple-600/20 rounded-full blur-[120px]"></div>
+    </div>
+
+    <div class="w-full max-w-[440px] fade-up">
+        
+        <div class="text-center mb-10 cursor-pointer" onclick="window.location.href='capa.php'">
+            <h1 class="text-4xl font-black italic tracking-tighter gradient-text">Connect Friends</h1>
+            <div class="flex items-center justify-center gap-2 mt-2">
+                <span class="h-[1px] w-8 bg-slate-700"></span>
+                <p class="text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em]">Private Access</p>
+                <span class="h-[1px] w-8 bg-slate-700"></span>
+            </div>
+        </div>
+
+        <div class="glass-card rounded-[2.5rem] p-8 lg:p-10">
+            
+            <div class="flex justify-center gap-10 mb-8">
+                <button onclick="switchTab('login')" id="btn-login" class="text-xs font-black uppercase tracking-widest tab-active transition-all">Entrar</button>
+                <button onclick="switchTab('cadastro')" id="btn-cadastro" class="text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-300 transition-all">Cadastrar</button>
+            </div>
+
+            <form id="form-login" onsubmit="handleLogin(event)" class="space-y-6">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">E-mail Institucional</label>
+                    <input type="email" required id="login-email" placeholder="seu@email.com" class="w-full px-5 py-4 rounded-2xl input-field font-medium">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Senha de Acesso</label>
+                    <input type="password" required id="login-senha" placeholder="••••••••" class="w-full px-5 py-4 rounded-2xl input-field font-medium">
+                </div>
+                <div class="flex justify-end">
+                    <button type="button" onclick="abrirModalRecuperar()" class="text-[10px] font-bold text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-tighter">Esqueceu a senha?</button>
+                </div>
+                <button type="submit" class="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-blue-900/20 active:scale-[0.97] transition-all">
+                    Acessar Plataforma
+                </button>
+            </form>
+
+            <form id="form-cadastro" onsubmit="handleCadastro(event)" class="hidden space-y-5">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nome Completo</label>
+                    <input type="text" id="nome-usuario" placeholder="Como quer ser chamado?" class="w-full px-5 py-4 rounded-2xl input-field font-medium text-sm">
+                    <div id="error-nome" class="error-msg">Informe seu nome</div>
+                </div>
+                <div class="grid grid-cols-1 gap-5">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nascimento</label>
+                        <input type="date" id="data-nascimento" class="w-full px-5 py-4 rounded-2xl input-field font-medium text-sm">
+                        <div id="error-idade" class="error-msg">Você precisa ter pelo menos 18 anos</div>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">E-mail</label>
+                    <input type="email" id="email-cadastro" placeholder="seu@email.com" class="w-full px-5 py-4 rounded-2xl input-field font-medium text-sm" required>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Definir Senha</label>
+                    <input type="password" id="senha-cadastro" placeholder="8+ chars, número e especial" class="w-full px-5 py-4 rounded-2xl input-field font-medium text-sm">
+                    <div id="error-senha" class="error-msg">8+ caracteres, com número e símbolo</div>
+                </div>
+                <button type="submit" class="w-full py-5 bg-white text-slate-900 hover:bg-slate-100 rounded-2xl font-black text-xs uppercase tracking-[0.2em] active:scale-[0.97] transition-all mt-4">
+                    Criar Minha Conta
+                </button>
+            </form>
+
+            <div class="relative flex py-8 items-center">
+                <div class="flex-grow border-t border-slate-800"></div>
+                <span class="flex-shrink mx-4 text-[9px] font-black text-slate-600 uppercase tracking-[0.2em]">Social Login</span>
+                <div class="flex-grow border-t border-slate-800"></div>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="handleSocialLogin('Google', this)" type="button" class="flex-1 py-4 bg-slate-800/50 border border-slate-700 rounded-2xl flex items-center justify-center hover:bg-slate-700 transition-all">
+                    <img src="https://www.svgrepo.com/show/475656/google-color.svg" class="w-5 h-5">
+                </button>
+                <button onclick="handleSocialLogin('Facebook', this)" type="button" class="flex-1 py-4 bg-slate-800/50 border border-slate-700 rounded-2xl flex items-center justify-center hover:bg-slate-700 transition-all">
+                    <i class="fa-brands fa-facebook text-[#1877F2] text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-recuperar">
+        <div class="glass-card w-full max-w-[400px] rounded-[2rem] p-8 space-y-6">
+            <div class="text-center">
+                <i class="fa-solid fa-envelope-open-text text-3xl text-blue-500 mb-4"></i>
+                <h3 class="text-xl font-black uppercase tracking-widest">Recuperar Acesso</h3>
+                <p class="text-slate-400 text-xs mt-2">Enviaremos um código de verificação para o seu e-mail.</p>
+            </div>
+
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Confirme seu E-mail</label>
+                    <input type="email" id="email-recuperacao" placeholder="seu@email.com" class="w-full px-5 py-4 rounded-2xl input-field font-medium text-sm">
+                </div>
+                <button onclick="enviarCodigoRecuperacao(this)" class="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all">
+                    Enviar Código
+                </button>
+                <button onclick="fecharModalRecuperar()" class="w-full text-[10px] font-black text-slate-500 uppercase tracking-widest">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CSRF_TOKEN = <?= json_encode($csrf) ?>;
+
+        async function apiPost(url, payload) {
+            const response = await fetch(url, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': CSRF_TOKEN
+                },
+                body: JSON.stringify(payload || {})
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!data || !data.ok) {
+                const msg = (data && (data.error || data.message)) ? (data.error || data.message) : 'Erro ao conectar.';
+                throw new Error(msg);
+            }
+            return data;
+        }
+
+        function switchTab(tab) {
+            const loginForm = document.getElementById('form-login');
+            const cadastroForm = document.getElementById('form-cadastro');
+            const btnLogin = document.getElementById('btn-login');
+            const btnCadastro = document.getElementById('btn-cadastro');
+
+            if (tab === 'login') {
+                loginForm.classList.remove('hidden');
+                cadastroForm.classList.add('hidden');
+                btnLogin.classList.add('tab-active');
+                btnLogin.classList.remove('text-slate-500');
+                btnCadastro.classList.remove('tab-active');
+                btnCadastro.classList.add('text-slate-500');
+            } else {
+                loginForm.classList.add('hidden');
+                cadastroForm.classList.remove('hidden');
+                btnCadastro.classList.add('tab-active');
+                btnCadastro.classList.remove('text-slate-500');
+                btnLogin.classList.remove('tab-active');
+                btnLogin.classList.add('text-slate-500');
+            }
+        }
+
+        function abrirModalRecuperar() {
+            const modal = document.getElementById('modal-recuperar');
+            const emailLogin = document.getElementById('login-email').value;
+            if (emailLogin) document.getElementById('email-recuperacao').value = emailLogin;
+            modal.style.display = 'flex';
+        }
+
+        function fecharModalRecuperar() {
+            document.getElementById('modal-recuperar').style.display = 'none';
+        }
+
+        async function enviarCodigoRecuperacao(btn) {
+            const email = (document.getElementById('email-recuperacao').value || '').trim();
+            if (!email || !email.includes('@')) {
+                Swal.fire({ icon: 'error', title: 'E-mail inválido', text: 'Digite um e-mail real.', background: '#0f172a', color: '#fff' });
+                return;
+            }
+
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Processando...';
+            btn.disabled = true;
+
+            try {
+                await apiPost('api_senha_solicitar.php', { email });
+                fecharModalRecuperar();
+                window.location.href = 'redefinirsenha.php';
+            } catch (error) {
+                Swal.fire({ icon: 'error', title: 'Erro', text: error.message || 'Falha ao enviar.', background: '#0f172a', color: '#fff' });
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = (document.getElementById('login-email').value || '').trim();
+            const senha = (document.getElementById('login-senha').value || '');
+            const btn = e.target.querySelector('button[type="submit"]');
+
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Entrando...';
+            btn.disabled = true;
+
+            try {
+                const data = await apiPost('api/api_login.php', { email, senha });
+
+                if (data.tem_perfil) {
+
+    window.location.href = 'index.php';
+
+} else {
+
+    window.location.href = 'criacaoperfil.php';
+
+}
+            } catch (error) {
+                Swal.fire({ icon: 'error', title: 'Login inválido', text: error.message || 'Verifique seus dados.', background: '#0f172a', color: '#fff' });
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function handleSocialLogin(provider, btn) {
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin text-lg text-white"></i>';
+            btn.style.pointerEvents = 'none';
+            setTimeout(() => { window.location.href = 'index.php'; }, 1200);
+        }
+
+        async function handleCadastro(e) {
+            e.preventDefault();
+
+            const nomeInput = (document.getElementById('nome-usuario').value || '').trim();
+            const dataInput = (document.getElementById('data-nascimento').value || '').trim();
+            const emailInput = (document.getElementById('email-cadastro').value || '').trim();
+            const senhaInput = (document.getElementById('senha-cadastro').value || '');
+
+            document.querySelectorAll('.error-msg').forEach(el => el.style.display = 'none');
+
+            let hasError = false;
+
+            if (!nomeInput) { 
+                document.getElementById('error-nome').style.display = 'block';
+                hasError = true; 
+            }
+
+            if (!dataInput) { 
+                const errIdade = document.getElementById('error-idade');
+                errIdade.innerText = "Informe sua data de nascimento";
+                errIdade.style.display = 'block';
+                hasError = true; 
+            }
+
+            const regexSenha = /^(?=.*[0-9])(?=.*[!@#$%^&*])[a-zA-Z0-9!@#$%^&*]{8,}$/;
+            if (!regexSenha.test(senhaInput)) {
+                document.getElementById('error-senha').style.display = 'block';
+                hasError = true;
+            }
+
+            const dataNascimento = dataInput ? new Date(dataInput) : null;
+            const hoje = new Date();
+            let idade = 0;
+            if (dataNascimento) {
+                idade = hoje.getFullYear() - dataNascimento.getFullYear();
+                const m = hoje.getMonth() - dataNascimento.getMonth();
+                if (m < 0 || (m === 0 && hoje.getDate() < dataNascimento.getDate())) idade--;
+            }
+
+            if (dataInput && idade < 18) {
+                const errIdade = document.getElementById('error-idade');
+                errIdade.innerText = "🚫 Acesso negado: Mínimo 18 anos.";
+                errIdade.style.display = 'block';
+                hasError = true;
+            }
+
+            if (hasError) return;
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin"></i> Criando...';
+            btn.disabled = true;
+
+            try {
+                await apiPost('api/api_cadastro.php', {
+                    username: nomeInput,
+                    email: emailInput,
+                    senha: senhaInput,
+                    data_nascimento: dataInput
+                });
+
+                window.location.href = 'index.php';
+            } catch (error) {
+                Swal.fire({ icon: 'error', title: 'Erro no cadastro', text: error.message || 'Tente novamente.', background: '#0f172a', color: '#fff' });
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

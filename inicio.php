@@ -1,3 +1,9 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . "/bootstrap.php";
+
+$meuId = require_login(); // ID do usuário logado
+?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -171,6 +177,10 @@
 </div>
 
 <script>
+    // ✅ Dados do usuário logado vindos do PHP
+    const MEU_UID = <?= (int)$meuId ?>;
+    const MEU_AVATAR = `foto.php?uid=${MEU_UID}&ord=1`;
+
     (function initInicio() {
         window.meusStoriesArray = JSON.parse(localStorage.getItem('meus_stories_list')) || [];
         window.vistasMeusStories = JSON.parse(localStorage.getItem('vistas_stories')) || {};
@@ -306,24 +316,35 @@
             });
 
             let temPostsMatches = false;
+
             matchesSalvos.forEach(nomeMatch => {
-                const dadosUser = window.parent.usuariosDB[nomeMatch];
+                const dadosUser = (window.parent && window.parent.usuariosDB) ? window.parent.usuariosDB[nomeMatch] : null;
                 const matchPostId = 'match-' + nomeMatch;
-                
+
                 if(dadosUser && dadosUser.status !== 'bloqueado' && !postsBloqueados.includes(matchPostId)) {
+
+                    // ✅ tenta pegar ID do usuário do match (se existir no seu objeto)
+                    const matchId = dadosUser.id || dadosUser.id_usuarios || dadosUser.usuario_id || 0;
+
+                    // ✅ se tiver ID, usa foto.php (BLOB); senão cai no antigo dadosUser.foto
+                    const avatarSrc = matchId ? `foto.php?uid=${matchId}&ord=1` : (dadosUser.foto || "");
+                    const imgSrc    = matchId ? `foto.php?uid=${matchId}&ord=1` : (dadosUser.foto || "");
+
                     storiesContainer.innerHTML += `
-                        <div class="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer" onclick="verStory('${nomeMatch}', '${dadosUser.foto}', '${dadosUser.foto}', ${dadosUser.timestamp || Date.now() - 600000})">
+                        <div class="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer" onclick="verStory('${nomeMatch}', '${imgSrc}', '${avatarSrc}', ${dadosUser.timestamp || Date.now() - 600000})">
                             <div class="p-[3px] rounded-full gradient-bg"><div class="p-[2px] bg-white dark:bg-slate-900 rounded-full">
-                            <img src="${dadosUser.foto}" class="w-14 h-14 rounded-full object-cover"></div></div>
+                            <img src="${avatarSrc}" class="w-14 h-14 rounded-full object-cover"></div></div>
                             <span class="text-[10px] font-bold text-gray-600 dark:text-slate-400 uppercase tracking-tighter">${nomeMatch}</span>
                         </div>
                     `;
+
                     temPostsMatches = true;
+
                     feedMatchesContainer.innerHTML += criarHtmlPost({
                         id: matchPostId,
                         usuario: nomeMatch,
-                        avatar: dadosUser.foto,
-                        imagem: dadosUser.foto,
+                        avatar: avatarSrc,
+                        imagem: imgSrc,
                         texto: dadosUser.bio,
                         curtidas: 124,
                         timestamp: Date.now() - 600000,
@@ -368,7 +389,9 @@
         window.abrirMeusStories = function() {
             window.currentStoryIndex = 0;
             const storiesSeguros = window.meusStoriesArray.filter(s => s.status !== 'bloqueado');
-            mostrarStoryNaTela(storiesSeguros, "Você", localStorage.getItem('userPhoto') || "", true);
+
+            // ✅ avatar agora vem do servidor (foto.php)
+            mostrarStoryNaTela(storiesSeguros, "Você", MEU_AVATAR, true);
         };
 
         window.verStory = function(nome, foto, avatar, tempoTimestamp) {
@@ -580,71 +603,54 @@
             renderizarFeed();
         };
 
- window.curtirPostMatch = function(postId) {
-    let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+        window.curtirPostMatch = function(postId) {
+            let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            let post = posts.find(p => p.id == postId);
 
-    let post = posts.find(p => p.id == postId);
+            if (!post) {
+                post = { id: postId, curtidas: 0, comentarios: [], curtido: false };
+                posts.push(post);
+            }
 
-    // cria post se não existir
-    if (!post) {
-        post = {
-            id: postId,
-            curtidas: 0,
-            comentarios: [],
-            curtido: false
+            if (!post.curtidas) post.curtidas = 0;
+
+            if (post.curtido) {
+                post.curtido = false;
+                post.curtidas = Math.max(0, post.curtidas - 1);
+            } else {
+                post.curtido = true;
+                post.curtidas++;
+            }
+
+            localStorage.setItem('meus_posts', JSON.stringify(posts));
+            renderizarFeed();
         };
-        posts.push(post);
-    }
 
-    // garante número válido
-    if (!post.curtidas) post.curtidas = 0;
+        window.comentarPostMatch = function(postId) {
+            const input = document.getElementById(`input-${postId}`);
+            if(!input.value.trim()) return;
 
-    // toggle like
-    if (post.curtido) {
-        post.curtido = false;
-        post.curtidas = Math.max(0, post.curtidas - 1); // nunca negativo
-    } else {
-        post.curtido = true;
-        post.curtidas++;
-    }
+            if(!validarConteudoSeguro(input.value)) {
+                alert("Seu comentário contém palavras proibidas.");
+                input.value = '';
+                return;
+            }
 
-    localStorage.setItem('meus_posts', JSON.stringify(posts));
-    renderizarFeed();
-};
+            let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            let post = posts.find(p => p.id == postId);
 
-       window.comentarPostMatch = function(postId) {
-    const input = document.getElementById(`input-${postId}`);
-    if(!input.value.trim()) return;
+            if (!post) {
+                post = { id: postId, curtidas: 0, comentarios: [] };
+                posts.push(post);
+            }
 
-    if(!validarConteudoSeguro(input.value)) {
-        alert("Seu comentário contém palavras proibidas.");
-        input.value = '';
-        return;
-    }
+            post.comentarios = post.comentarios || [];
+            post.comentarios.push({ user: "Você", text: input.value });
 
-    let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
-
-    let post = posts.find(p => p.id == postId);
-
-    if (!post) {
-        post = {
-            id: postId,
-            curtidas: 0,
-            comentarios: []
+            localStorage.setItem('meus_posts', JSON.stringify(posts));
+            input.value = '';
+            renderizarFeed();
         };
-        posts.push(post);
-    }
-
-    post.comentarios = post.comentarios || [];
-    post.comentarios.push({
-        user: "Você",
-        text: input.value
-    });
-
-    localStorage.setItem('meus_posts', JSON.stringify(posts));
-    input.value = '';
-    renderizarFeed();
-};
 
         const verificarSegurancaInicial = () => {
             let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
@@ -665,4 +671,4 @@
     })();
 </script>
 </body>
-</html>
+</html> 

@@ -1,3 +1,7 @@
+<?php
+require_once __DIR__ . "/bootstrap.php";
+$csrf = csrf_token();
+?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -107,7 +111,7 @@
             </form>
 
             <div class="text-center mt-6">
-                <button onclick="window.location.href='cadastro.html'" class="text-[10px] font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest">
+                <button onclick="window.location.href='cadastro.php'" class="text-[10px] font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest">
                     Voltar ao Login
                 </button>
             </div>
@@ -115,13 +119,37 @@
     </div>
 
     <script>
-        const API_URL = 'https://connect-friends-api.onrender.com';
+        const CSRF_TOKEN = <?= json_encode($csrf) ?>;
 
-        // 1. Solicita o código ao Servidor no Render
+        function getEmail() {
+            return (document.getElementById('email-recuperacao').value || '').trim();
+        }
+
+        async function apiPost(url, payload) {
+            const response = await fetch(url, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': CSRF_TOKEN
+                },
+                body: JSON.stringify(payload || {})
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!data || !data.ok) {
+                const msg = (data && (data.error || data.message)) ? (data.error || data.message) : 'Erro ao conectar.';
+                throw new Error(msg);
+            }
+            return data;
+        }
+
+        // 1) Solicita código (server-side)
         async function solicitarCodigo() {
-            const email = document.getElementById('email-recuperacao').value;
+            const email = getEmail();
 
-            if (!email.includes('@')) {
+            if (!email || !email.includes('@')) {
                 Swal.fire({ icon: 'error', title: 'E-mail inválido', text: 'Digite um e-mail real.', background: '#0f172a', color: '#fff' });
                 return;
             }
@@ -134,35 +162,42 @@
             });
 
             try {
-                const response = await fetch(`${API_URL}/enviar-codigo`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
+                await apiPost('api_senha_solicitar.php', { email });
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Enviado!',
+                    text: 'O código chegou no seu e-mail.',
+                    background: '#0f172a',
+                    color: '#fff'
                 });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    localStorage.setItem('codigoGerado', data.codigo);
-                    Swal.fire({ icon: 'success', title: 'Enviado!', text: 'O código chegou no seu e-mail.', background: '#0f172a', color: '#fff' });
-                } else {
-                    throw new Error(data.error || 'Erro ao enviar');
-                }
             } catch (error) {
-                Swal.fire({ icon: 'error', title: 'Ops!', text: 'Servidor offline ou erro no envio.', background: '#0f172a', color: '#fff' });
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Ops!',
+                    text: error.message || 'Servidor offline ou erro no envio.',
+                    background: '#0f172a',
+                    color: '#fff'
+                });
             }
         }
 
-        // 2. Valida os dados localmente antes de permitir o acesso
-        function validarCodigo(e) {
+        // 2) Valida e troca senha (server-side)
+        async function validarCodigo(e) {
             e.preventDefault();
-            const codigoDigitado = document.getElementById('input-codigo').value;
-            const senha = document.getElementById('nova-senha').value;
-            const confirma = document.getElementById('confirma-senha').value;
-            const codigoReal = localStorage.getItem('codigoGerado');
 
-            if (codigoDigitado !== codigoReal) {
-                Swal.fire({ icon: 'error', title: 'Código Errado', text: 'Verifique o e-mail novamente.', background: '#0f172a', color: '#fff' });
+            const email = getEmail();
+            const codigoDigitado = (document.getElementById('input-codigo').value || '').replace(/\D+/g,'');
+            const senha = (document.getElementById('nova-senha').value || '');
+            const confirma = (document.getElementById('confirma-senha').value || '');
+
+            if (!email || !email.includes('@')) {
+                Swal.fire({ icon: 'error', title: 'E-mail inválido', text: 'Digite o e-mail da conta.', background: '#0f172a', color: '#fff' });
+                return;
+            }
+
+            if (codigoDigitado.length !== 6) {
+                Swal.fire({ icon: 'warning', title: 'Código inválido', text: 'Digite os 6 números.', background: '#0f172a', color: '#fff' });
                 return;
             }
 
@@ -176,23 +211,40 @@
                 return;
             }
 
-            // Simulação de salvamento (Até conectar o Banco de Dados real)
             const btn = document.getElementById('btn-submit');
+            const oldHtml = btn.innerHTML;
             btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Salvando...';
             btn.disabled = true;
 
-            setTimeout(() => {
-                localStorage.removeItem('codigoGerado');
-                Swal.fire({ 
-                    icon: 'success', 
-                    title: 'Tudo pronto!', 
-                    text: 'Sua senha foi redefinida com sucesso.', 
-                    background: '#0f172a', color: '#fff' 
-                }).then(() => {
-                    window.location.href = 'cadastro.html';
+            try {
+                await apiPost('api_senha_redefinir.php', {
+                    email,
+                    codigo: codigoDigitado,
+                    senha
                 });
-            }, 2000);
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Tudo pronto!',
+                    text: 'Sua senha foi redefinida com sucesso.',
+                    background: '#0f172a',
+                    color: '#fff'
+                }).then(() => {
+                    window.location.href = 'cadastro.php';
+                });
+
+            } catch (error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Erro',
+                    text: error.message || 'Não foi possível redefinir.',
+                    background: '#0f172a',
+                    color: '#fff'
+                });
+                btn.innerHTML = oldHtml;
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
-</html>
+</html>  

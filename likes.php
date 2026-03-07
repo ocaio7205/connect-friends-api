@@ -1,3 +1,26 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/bootstrap.php';
+require_login();
+$csrf = csrf_token();
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Curtidas | Connect Friends</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- CSRF para fetch -->
+  <meta name="csrf-token" content="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
+</head>
+
+<body class="bg-slate-50 dark:bg-slate-900">
+
 <section class="p-6 lg:p-10 animate-in fade-in duration-500 max-w-6xl mx-auto">
     <div class="flex items-center justify-between mb-8">
         <div>
@@ -30,7 +53,7 @@
 
 <div id="modal-premium" class="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
     <div class="bg-[#1e293b] w-full max-w-[400px] rounded-[3rem] overflow-hidden shadow-2xl border border-white/10">
-        
+
         <div class="bg-gradient-to-b from-[#3b82f6] to-[#6366f1] p-8 text-center text-white relative">
             <button onclick="closePremium()" class="absolute top-4 right-6 text-white/50 hover:text-white text-2xl">×</button>
             <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
@@ -63,13 +86,13 @@
             </div>
 
             <div class="grid grid-cols-2 gap-3">
-                <div id="plano-mensal" onclick="selecionarPlano('mensal', 19.90)" 
+                <div id="plano-mensal" onclick="selecionarPlano('mensal', 19.90)"
                     class="plano-card border-2 border-slate-700 rounded-3xl p-4 text-center cursor-pointer transition-all bg-slate-800/50">
                     <p class="text-slate-400 text-[10px] font-bold uppercase">Mensal</p>
                     <p class="text-white font-black text-lg">R$ 19,90</p>
                 </div>
 
-                <div id="plano-anual" onclick="selecionarPlano('anual', 199.90)" 
+                <div id="plano-anual" onclick="selecionarPlano('anual', 199.90)"
                     class="plano-card border-2 border-cyan-400 rounded-3xl p-4 text-center cursor-pointer relative bg-slate-800/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
                     <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-400 text-slate-900 text-[8px] font-black px-3 py-1 rounded-full uppercase whitespace-nowrap">Melhor Valor</span>
                     <p class="text-slate-400 text-[10px] font-bold uppercase">Anual</p>
@@ -149,163 +172,212 @@
 </div>
 
 <script>
-    // Configurações de Links
-    const LINKS_CHECKOUT = {
-        mensal: "https://pay.mercadopago.com.br/link-mensal",
-        anual: "https://pay.mercadopago.com.br/link-anual"
-    };
+/* ========= CONFIG ========= */
+const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
-    let valorSelecionado = 199.90; // Padrão anual
+/* ========= ESTADO ========= */
+let IS_GOLD = false;
+let valorSelecionado = 199.90; // mantém igual seu padrão anual
 
-    // --- NOVAS FUNÇÕES DE SIMULAÇÃO DE PAGAMENTO ---
-    function abrirPagamentoInterno() {
-        closePremium();
-        document.getElementById('modal-pagamento-interno').classList.remove('hidden');
-    }
+/* ========= MODAIS (SEU CÓDIGO, SEM MEXER NO DESIGN) ========= */
+function openPremium(motivo) {
+  document.getElementById('premium-motivo').innerText = "Para liberar: " + motivo;
+  document.getElementById('modal-premium').classList.remove('hidden');
+}
+function closePremium() {
+  document.getElementById('modal-premium').classList.add('hidden');
+}
+function selecionarPlano(tipo, valor) {
+  valorSelecionado = valor;
+  document.querySelectorAll('.plano-card').forEach(card => {
+    card.classList.remove('border-cyan-400', 'shadow-[0_0_15px_rgba(34,211,238,0.2)]');
+    card.classList.add('border-slate-700');
+  });
+  const cardAtivo = document.getElementById(`plano-${tipo}`);
+  cardAtivo.classList.remove('border-slate-700');
+  cardAtivo.classList.add('border-cyan-400', 'shadow-[0_0_15px_rgba(34,211,238,0.2)]');
+}
 
-    function fecharPagamentoInterno() {
-        document.getElementById('modal-pagamento-interno').classList.add('hidden');
-        document.getElementById('form-cartao-interno').classList.add('hidden');
-    }
+/* ========= PAGAMENTO INTERNO (mantém UI; sem localStorage) ========= */
+function abrirPagamentoInterno() {
+  closePremium();
+  document.getElementById('modal-pagamento-interno').classList.remove('hidden');
+}
+function fecharPagamentoInterno() {
+  document.getElementById('modal-pagamento-interno').classList.add('hidden');
+  document.getElementById('form-cartao-interno').classList.add('hidden');
+}
+function mostrarCamposCartao() {
+  document.getElementById('form-cartao-interno').classList.remove('hidden');
+}
 
-    function mostrarCamposCartao() {
-        document.getElementById('form-cartao-interno').classList.remove('hidden');
-    }
+/* ========= AQUI: em vez de localStorage, chama API ========= */
+async function processarSimulacaoFinal() {
+  Swal.fire({
+    title: 'Processando...',
+    text: 'Comunicando com a operadora',
+    timer: 1500,
+    timerProgressBar: true,
+    background: '#1e293b',
+    color: '#ffffff',
+    didOpen: () => { Swal.showLoading(); }
+  }).then(async () => {
+    try {
+      // endpoint server-side pra ativar gold (sessão/banco)
+      // se você já tiver outro nome, troca aqui, mas SEM barra:
+      const resp = await fetch('api_assinatura_simular.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': CSRF
+        },
+        body: JSON.stringify({ plano: (valorSelecionado === 199.90 ? 'anual' : 'mensal') })
+      });
 
-   function processarSimulacaoFinal() {
-    Swal.fire({
-        title: 'Processando...',
-        text: 'Comunicando com a operadora',
-        timer: 2000,
-        timerProgressBar: true,
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || 'Falha ao ativar assinatura');
+
+      fecharPagamentoInterno();
+
+      // recarrega status e UI
+      await carregarStatusGold();
+      await carregarCurtidasReais();
+      verificarAcessoGold();
+
+      document.getElementById('modal-sucesso').classList.remove('hidden');
+    } catch (e) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Não ativou o Gold',
+        text: String(e.message || e),
         background: '#1e293b',
-        color: '#ffffff',
-        didOpen: () => { Swal.showLoading(); }
-    }).then(() => {
-
-        // AÇÃO PRINCIPAL: Salva o status e atualiza a tela na hora
-        localStorage.setItem('usuario_gold', 'true');
-
-        fecharPagamentoInterno();
-
-        // Atualiza acesso premium
-        verificarAcessoGold();
-
-        // Recarrega curtidas
-        carregarCurtidasReais();
-
-        document.getElementById('modal-sucesso').classList.remove('hidden');
-    });
+        color: '#ffffff'
+      });
+    }
+  });
 }
 
-    // --- FUNÇÕES DO MODAL PREMIUM ---
-    function openPremium(motivo) {
-        document.getElementById('premium-motivo').innerText = "Para liberar: " + motivo;
-        document.getElementById('modal-premium').classList.remove('hidden');
-    }
+function fecharSucesso() { document.getElementById('modal-sucesso').classList.add('hidden'); }
 
-    function closePremium() {
-        document.getElementById('modal-premium').classList.add('hidden');
-    }
+/* ========= BANCO REAL (SEM LOCALSTORAGE) ========= */
 
-    function selecionarPlano(tipo, valor) {
-        valorSelecionado = valor;
-        document.querySelectorAll('.plano-card').forEach(card => {
-            card.classList.remove('border-cyan-400', 'shadow-[0_0_15px_rgba(34,211,238,0.2)]');
-            card.classList.add('border-slate-700');
-        });
-        const cardAtivo = document.getElementById(`plano-${tipo}`);
-        cardAtivo.classList.remove('border-slate-700');
-        cardAtivo.classList.add('border-cyan-400', 'shadow-[0_0_15px_rgba(34,211,238,0.2)]');
-    }
+/** 1) pega se usuário é gold */
+async function carregarStatusGold() {
+  const res = await fetch('api_me_status.php', {
+    method: 'GET',
+    credentials: 'same-origin',
+    headers: { 'Accept': 'application/json' }
+  });
 
-    function confirmarAssinatura() {
-        const btn = document.getElementById('btn-assinar-modal');
-        const tipo = valorSelecionado === 199.90 ? 'anual' : 'mensal';
-        btn.innerHTML = "PROCESSANDO...";
-        btn.disabled = true;
-        window.location.href = LINKS_CHECKOUT[tipo];
-    }
-
-    // --- INTEGRAÇÃO COM BANCO DE DADOS ---
-    async function carregarCurtidasReais() {
-        try {
-            const dadosDoBanco = [
-                { id: 1, nome: "Júlia", idade: 22, foto: "https://i.pravatar.cc/300?u=9" },
-                { id: 2, nome: "Beatriz", idade: 24, foto: "https://i.pravatar.cc/300?u=12" },
-                { id: 3, nome: "Amanda", idade: 20, foto: "https://i.pravatar.cc/300?u=15" },
-                { id: 4, nome: "Carla", idade: 26, foto: "https://i.pravatar.cc/300?u=20" },
-                { id: 5, nome: "Bruna", idade: 23, foto: "https://i.pravatar.cc/300?u=25" },
-                { id: 6, nome: "Fernanda", idade: 21, foto: "https://i.pravatar.cc/300?u=30" },
-                { id: 7, nome: "Gabi", idade: 25, foto: "https://i.pravatar.cc/300?u=35" },
-                { id: 8, nome: "Sofia", idade: 19, foto: "https://i.pravatar.cc/300?u=40" }
-            ];
-            renderizarCurtidas(dadosDoBanco);
-        } catch (error) { console.error(error); }
-    }
-
-    function renderizarCurtidas(lista) {
-        const grid = document.getElementById('grid-fotos');
-        const eGold = localStorage.getItem('usuario_gold') === 'true';
-        grid.innerHTML = '';
-        lista.forEach(perfil => {
-            const blurClass = eGold ? '' : 'blur-2xl scale-125';
-            const btnTexto = eGold ? 'Conversar' : 'Ver Perfil';
-            const btnClick = eGold ? `window.location.href='mensagens.html?id=${perfil.id}'` : `openPremium('Ver Perfil de ${perfil.nome}')`;
-            grid.innerHTML += `
-                <div class="group relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-200 transition-all hover:scale-[1.02]">
-                    <img src="${perfil.foto}" class="img-perfil w-full h-full object-cover transition duration-700 ${blurClass} group-hover:scale-150">
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col items-center justify-end p-6">
-                        <p class="text-white font-bold mb-3">${perfil.nome}, ${perfil.idade}</p>
-                        <button onclick="${btnClick}" class="btn-perfil w-full bg-white text-slate-900 py-3 rounded-2xl font-extrabold text-[11px] shadow-2xl uppercase tracking-wider">${btnTexto}</button>
-                    </div>
-                </div>`;
-        });
-        atualizarContador();
-    }
-
-    // --- LÓGICA DE STATUS E ACESSO ---
-    function verificarAcessoGold() {
-    if (localStorage.getItem('usuario_gold') === 'true') {
-        document.querySelectorAll('.img-perfil').forEach(img => img.classList.remove('blur-2xl'));
-        document.querySelectorAll('.btn-perfil').forEach(btn => {
-            btn.innerText = 'Conversar';
-            btn.onclick = () => window.location.href = 'mensagens.html';
-        });
-        const banner = document.getElementById('banner-azul');
-        if(banner) banner.classList.add('hidden');
-
-        const badge = document.getElementById('badge-contagem');
-        if (badge) { badge.classList.add('bg-green-500'); }
-    }
+  const data = await res.json();
+  IS_GOLD = !!(data.user && data.user.is_gold);
 }
-    function fecharSucesso() { document.getElementById('modal-sucesso').classList.add('hidden'); }
 
-    function verificarAcessoGold() {
-        if (localStorage.getItem('usuario_gold') === 'true') {
-            document.querySelectorAll('.img-perfil').forEach(img => img.classList.remove('blur-2xl'));
-            document.querySelectorAll('.btn-perfil').forEach(btn => {
-                btn.innerText = 'Conversar';
-                btn.onclick = () => window.location.href = 'mensagens.html';
-            });
-            const banner = document.getElementById('banner-azul');
-            if(banner) banner.classList.add('hidden');
-            
-            // Remove o contador ou muda para ilimitado se necessário
-            const badge = document.getElementById('badge-contagem');
-            if (badge) { badge.classList.add('bg-green-500'); }
-        }
-    }
+/** 2) lista curtidas reais */
+async function carregarCurtidasReais() {
+  const res = await fetch('api_likes_list.php', {
+    method: 'GET',
+    credentials: 'same-origin',
+    headers: { 'Accept': 'application/json' }
+  });
 
-    function atualizarContador() {
-        const badge = document.getElementById('badge-contagem');
-        const total = document.getElementById('grid-fotos').children.length;
-        if (badge) { badge.innerText = total > 99 ? "99+" : total; badge.classList.remove('hidden'); }
-    }
+  const data = await res.json();
+  renderizarCurtidas(data.likes || []);
+}
 
-    document.addEventListener('DOMContentLoaded', () => {
-        carregarCurtidasReais();
-        verificarAcessoGold();
-        detectarSucessoPagamento();
+/** 3) renderiza mantendo seu design */
+function renderizarCurtidas(lista) {
+  const grid = document.getElementById('grid-fotos');
+  grid.innerHTML = '';
+
+  // mantém seu badge igual
+  if (!lista || lista.length === 0) {
+    grid.innerHTML = `
+      <div class="col-span-full text-center text-slate-400 font-medium">
+        Nenhuma curtida ainda.
+      </div>
+    `;
+    atualizarContador();
+    verificarAcessoGold();
+    return;
+  }
+
+  lista.forEach(perfil => {
+    const blurClass = IS_GOLD ? '' : 'blur-2xl scale-125';
+    const btnTexto = IS_GOLD ? 'Conversar' : 'Ver Perfil';
+
+    // mantém a mesma ação visual:
+    // - gold: vai pra mensagens.php
+    // - não gold: abre premium
+    const btnClick = IS_GOLD
+      ? `window.location.href='mensagens.php?id=${perfil.id}'`
+      : `openPremium('Ver Perfil de ${perfil.nome}')`;
+
+    grid.innerHTML += `
+      <div class="group relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-200 transition-all hover:scale-[1.02]">
+        <img src="${perfil.foto}" class="img-perfil w-full h-full object-cover transition duration-700 ${blurClass} group-hover:scale-150">
+        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col items-center justify-end p-6">
+          <p class="text-white font-bold mb-3">${perfil.nome}, ${perfil.idade}</p>
+          <button onclick="${btnClick}" class="btn-perfil w-full bg-white text-slate-900 py-3 rounded-2xl font-extrabold text-[11px] shadow-2xl uppercase tracking-wider">${btnTexto}</button>
+        </div>
+      </div>
+    `;
+  });
+
+  atualizarContador();
+  verificarAcessoGold();
+}
+
+/* ========= LÓGICA DE ACESSO (SEM LOCALSTORAGE) ========= */
+function verificarAcessoGold() {
+  if (IS_GOLD) {
+    document.querySelectorAll('.img-perfil').forEach(img => img.classList.remove('blur-2xl'));
+    document.querySelectorAll('.btn-perfil').forEach(btn => {
+      btn.innerText = 'Conversar';
+      // o onclick real já foi setado no render; aqui só mantém seu comportamento.
     });
+    const banner = document.getElementById('banner-azul');
+    if (banner) banner.classList.add('hidden');
+
+    const badge = document.getElementById('badge-contagem');
+    if (badge) { badge.classList.add('bg-green-500'); }
+  } else {
+    // se não gold, garante banner visível (igual seu arquivo)
+    const banner = document.getElementById('banner-azul');
+    if (banner) banner.classList.remove('hidden');
+  }
+}
+
+function atualizarContador() {
+  const badge = document.getElementById('badge-contagem');
+  const total = document.getElementById('grid-fotos').children.length;
+  if (badge) {
+    badge.innerText = total > 99 ? "99+" : total;
+    badge.classList.remove('hidden');
+  }
+}
+
+/* ========= INIT ========= */
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await carregarStatusGold();
+    await carregarCurtidasReais();
+    verificarAcessoGold();
+  } catch (e) {
+    console.error(e);
+    Swal.fire({
+      icon: 'error',
+      title: 'Erro ao carregar curtidas',
+      text: 'Não foi possível carregar do servidor.',
+      background: '#1e293b',
+      color: '#ffffff'
+    });
+  }
+});
+</script>
+
+</body>
+</html>
 </script>
