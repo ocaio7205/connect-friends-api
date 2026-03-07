@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 
 require_once __DIR__ . "/bootstrap.php";
 $meuId = require_login();     // ✅ tira sessionStorage (acessoPermitido) e usa sessão de verdade
