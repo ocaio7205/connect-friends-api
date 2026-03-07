@@ -1,0 +1,674 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . "/bootstrap.php";
+
+$meuId = require_login(); // ID do usuário logado
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Início | Connect Friends</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 50%, #a855f7 100%); }
+
+        /* Ajuste das barras de progresso estilo Instagram */
+        .story-progress { height: 2px; background: rgba(255,255,255,0.3); flex: 1; border-radius: 2px; overflow: hidden; position: relative; }
+        .story-progress-fill { height: 100%; background: white; width: 0%; transition: none; }
+        .story-active-fill { transition: width 5s linear !important; width: 100% !important; }
+        
+        .liked-heart { color: #ef4444 !important; transform: scale(1.1); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        
+        .animate-fade-in { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .animate-modal-pop { animation: modalPop 0.2s ease-out; }
+        @keyframes modalPop { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+        /* Animações extras */
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+        .heart-pulse { animation: heartBeat 1.5s infinite; }
+        @keyframes heartBeat {
+            0% { transform: scale(1); }
+            14% { transform: scale(1.3); }
+            28% { transform: scale(1); }
+            42% { transform: scale(1.3); }
+            70% { transform: scale(1); }
+        }
+
+        .story-modal-content {
+            width: 100%;
+            max-width: 420px; 
+            height: 100vh;
+            margin: 0 auto;
+            background: black;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (min-width: 1024px) {
+            .post-container { max-width: 550px !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+
+<div class="fade-in max-w-xl lg:max-w-4xl mx-auto py-6 px-4">
+    <div class="flex gap-4 overflow-x-auto no-scrollbar mb-8 pb-2">
+        <div class="flex-shrink-0 flex flex-col items-center gap-2">
+            <label for="story-upload" class="w-16 h-16 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center bg-white dark:bg-slate-800 cursor-pointer hover:border-blue-400 hover:text-blue-500 transition-all group">
+                <i class="fa-solid fa-plus text-gray-400 group-hover:scale-110 transition"></i>
+                <input type="file" id="story-upload" class="hidden" accept="image/*" onchange="adicionarStory(event)">
+            </label>
+            <span class="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Seu Story</span>
+        </div>
+        <div id="stories-container" class="flex gap-4"></div>
+    </div>
+
+    <div id="meus-posts-container" class="post-container mx-auto"></div>
+    <div id="feed-container" class="post-container mx-auto"></div>
+
+    <div id="empty-feed-state" class="flex flex-col items-center justify-center py-20 text-center">
+        <div class="w-20 h-20 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+            <i class="fa-solid fa-layer-group text-gray-300 dark:text-slate-600 text-3xl"></i>
+        </div>
+        <h3 class="font-bold text-gray-800 dark:text-slate-200">Nenhuma postagem ainda</h3>
+        <p class="text-sm text-gray-500 max-w-[250px] mx-auto mt-2">Dê matches no explorar para ver as postagens dos seus amigos aqui.</p>
+    </div>
+</div>
+
+<div id="story-modal" class="fixed inset-0 z-[300] bg-black/95 hidden flex-col items-center justify-center">
+    <div class="story-modal-content relative shadow-2xl">
+        <div id="story-progress-container" class="flex gap-1.5 p-4 w-full absolute top-0 z-50"></div>
+        
+        <div class="flex justify-between items-center p-4 pt-8 absolute top-0 w-full z-50">
+            <div class="flex items-center gap-3">
+                <img id="story-modal-avatar" src="" class="w-9 h-9 rounded-full border border-white/20 object-cover">
+                <div class="flex flex-col">
+                    <span id="story-modal-user" class="text-white font-bold text-sm leading-tight"></span>
+                    <span id="story-modal-time" class="text-white/60 text-[10px] font-medium">agora</span>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-1">
+                <button id="btn-excluir-story" onclick="abrirConfirmacaoExcluir()" class="hidden text-white/90 hover:text-red-500 transition-colors w-10 h-10 flex items-center justify-center">
+                    <i class="fa-regular fa-trash-can text-xl"></i>
+                </button>
+                <button onclick="fecharStory()" class="text-white hover:opacity-70 transition-opacity w-10 h-10 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-2xl"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="absolute inset-0 flex z-20">
+            <div class="w-1/3 h-full cursor-pointer" onclick="storyAnterior()"></div>
+            <div class="w-2/3 h-full cursor-pointer" onclick="proximoStory()"></div>
+        </div>
+
+        <div class="flex-1 flex items-center justify-center bg-zinc-900">
+            <img id="story-modal-img" src="" class="w-full h-auto max-h-full object-contain">
+        </div>
+        
+        <div id="story-footer" class="p-6 pb-10 flex items-center gap-4 bg-gradient-to-t from-black via-black/60 to-transparent w-full z-30">
+            <div class="flex-1 relative">
+                <input type="text" id="story-comment-input" placeholder="Enviar mensagem..." 
+                       class="w-full bg-transparent border border-white/40 rounded-full py-2.5 px-5 text-white text-sm outline-none focus:border-white transition">
+            </div>
+            <button onclick="curtirStoryAtual()" class="text-white text-2xl transition active:scale-125">
+                <i id="story-heart-icon" class="fa-regular fa-heart"></i>
+            </button>
+        </div>
+
+        <div id="story-footer-self" class="hidden p-6 pb-10 flex items-center justify-between bg-gradient-to-t from-black via-black/60 to-transparent w-full z-30">
+            <button onclick="abrirVisualizacoes()" class="flex items-center gap-2 group">
+                <div class="flex -space-x-2">
+                    <div class="w-6 h-6 rounded-full border border-black bg-slate-600 flex items-center justify-center text-[10px] text-white overflow-hidden">
+                        <i class="fa-solid fa-user scale-75"></i>
+                    </div>
+                </div>
+                <span id="vistos-texto" class="text-white text-xs font-bold group-hover:underline">Visto por 0</span>
+            </button>
+            <div class="text-white/50 text-xs flex items-center gap-1">
+                Atividade <i class="fa-solid fa-chart-line text-[10px]"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modal-visualizacoes" class="fixed inset-0 z-[500] bg-black/60 hidden items-end justify-center">
+    <div class="bg-white dark:bg-slate-800 w-full max-w-[420px] rounded-t-3xl animate-slide-up overflow-hidden max-h-[70vh] flex flex-col">
+        <div class="w-12 h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full mx-auto my-3"></div>
+        <div class="px-6 py-4 flex justify-between items-center border-b border-gray-100 dark:border-slate-700">
+            <h4 class="font-bold text-gray-900 dark:text-white">Espectadores</h4>
+            <button onclick="fecharVisualizacoes()" class="text-blue-500 font-bold text-sm hover:opacity-70 transition">Concluído</button>
+        </div>
+        <div id="lista-espectadores" class="flex-1 overflow-y-auto p-4 space-y-5">
+            </div>
+    </div>
+</div>
+
+<div id="modal-confirm-excluir" class="fixed inset-0 z-[600] bg-slate-900/90 backdrop-blur-sm hidden flex items-center justify-center p-6">
+    <div class="bg-slate-800 border border-slate-700 w-full max-w-[300px] rounded-[2.5rem] overflow-hidden animate-modal-pop shadow-2xl">
+        <div class="p-8 text-center">
+            <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fa-solid fa-trash-can text-red-500 text-2xl"></i>
+            </div>
+            <h4 class="font-extrabold text-xl text-white mb-2">Excluir Story?</h4>
+            <p class="text-xs text-slate-400 leading-relaxed">Essa foto será removida permanentemente do seu story e não poderá ser recuperada.</p>
+        </div>
+        <div class="flex flex-col p-4 pt-0 gap-2">
+            <button onclick="confirmarExclusaoStory()" class="w-full py-4 bg-red-500 hover:bg-red-600 text-white font-extrabold rounded-2xl transition-all active:scale-95">
+                Excluir
+            </button>
+            <button onclick="fecharConfirmacaoExcluir()" class="w-full py-4 bg-transparent hover:bg-slate-700 text-slate-400 font-bold rounded-2xl transition-all">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ✅ Dados do usuário logado vindos do PHP
+    const MEU_UID = <?= (int)$meuId ?>;
+    const MEU_AVATAR = `foto.php?uid=${MEU_UID}&ord=1`;
+
+    (function initInicio() {
+        window.meusStoriesArray = JSON.parse(localStorage.getItem('meus_stories_list')) || [];
+        window.vistasMeusStories = JSON.parse(localStorage.getItem('vistas_stories')) || {};
+        window.storiesCurtidos = JSON.parse(localStorage.getItem('stories_curtidos')) || {};
+        window.currentStoryIndex = 0;
+
+        const TERMOS_PROIBIDOS = ['violencia', 'sangue', 'morte', 'nudez', 'sexo', 'porn', 'estupro', 'arma', 'gore'];
+
+        function validarConteudoSeguro(texto) {
+            if (!texto) return true;
+            const textoMinusculo = texto.toLowerCase();
+            return !TERMOS_PROIBIDOS.some(termo => textoMinusculo.includes(termo));
+        }
+
+        function calcularTempo(timestamp) {
+            return "agora";
+        }
+
+        window.denunciarPost = function(postId, usuario) {
+            const confirmacao = confirm(`Deseja denunciar a publicação de ${usuario} por conteúdo impróprio?`);
+            if (confirmacao) {
+                let denuncias = JSON.parse(localStorage.getItem('denuncias_posts')) || {};
+                denuncias[postId] = (denuncias[postId] || 0) + 1;
+                localStorage.setItem('denuncias_posts', JSON.stringify(denuncias));
+
+                if (denuncias[postId] >= 3) {
+                    alert("Este post foi removido devido a múltiplas denúncias da comunidade.");
+                    let bloqueados = JSON.parse(localStorage.getItem('posts_bloqueados')) || [];
+                    bloqueados.push(postId);
+                    localStorage.setItem('posts_bloqueados', JSON.stringify(bloqueados));
+                    renderizarFeed();
+                } else {
+                    alert("Obrigado! Nossa equipe analisará a publicação.");
+                }
+            }
+        };
+
+        function criarHtmlPost(post, isMeuPost = false) {
+            const postId = post.id;
+            const curtiu = post.curtido || false;
+            const totalCurtidas = post.curtidas || 0;
+            const comentarios = post.comentarios || [];
+            const tempoPost = calcularTempo(post.timestamp);
+
+            return `
+                <article class="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-xl overflow-hidden mb-6 mx-auto transition-all max-w-2xl border border-slate-100 dark:border-slate-700 animate-fade-in">
+                    <div class="p-4 flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-3">
+                            <div class="p-[2px] rounded-full gradient-bg">
+                                <div class="p-[2px] bg-white dark:bg-slate-900 rounded-full">
+                                    <img src="${post.avatar}" class="w-10 h-10 rounded-full border-2 border-white object-cover cursor-pointer" onclick="window.parent.abrirPerfilDetalhado('${post.usuario}')">
+                                </div>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="font-bold text-base text-gray-700 dark:text-slate-200 cursor-pointer leading-tight" onclick="window.parent.abrirPerfilDetalhado('${post.usuario}')">${post.usuario}</span>
+                                <span class="text-[10px] text-gray-400 font-medium">${tempoPost}</span>
+                            </div>
+                        </div>
+                        ${isMeuPost ? `
+                        <button onclick="excluirMeuPost(${postId})" class="text-gray-400 hover:text-red-500 transition px-2">
+                            <i class="fa-solid fa-trash-can text-sm"></i>
+                        </button>` : `
+                        <button onclick="denunciarPost('${postId}', '${post.usuario}')" class="text-gray-300 hover:text-orange-500 transition px-2" title="Denunciar">
+                            <i class="fa-solid fa-flag text-xs"></i>
+                        </button>
+                        `}
+                    </div>
+                    <div class="relative cursor-pointer" ondblclick="${isMeuPost ? 'curtirMeuPost' : 'curtirPostMatch'}(${postId})">
+                        <img src="${post.imagem}" class="post-image w-full aspect-square object-cover">
+                        <div id="heart-overlay-${postId}" class="absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-all duration-500">
+                            <i class="fa-solid fa-heart text-white text-9xl drop-shadow-2xl"></i>
+                        </div>
+                    </div>
+                    <div class="p-8">
+                        <div class="flex gap-6 text-3xl mb-3">
+                            <button onclick="${isMeuPost ? 'curtirMeuPost' : 'curtirPostMatch'}(${postId})" id="like-btn-${postId}" class="transition active:scale-90 ${curtiu ? 'text-red-500' : 'text-gray-800 dark:text-slate-200'}">
+                                <i class="${curtiu ? 'fa-solid' : 'fa-regular'} fa-heart"></i>
+                            </button>
+                            <button onclick="document.getElementById('input-${postId}').focus()" class="text-gray-800 dark:text-slate-200">
+                                <i class="fa-regular fa-comment"></i>
+                            </button>
+                        </div>
+                        <p class="font-black text-sm dark:text-white mb-2"><span id="likes-count-${postId}">${totalCurtidas}</span> curtidas</p>
+                        <p class="text-base text-gray-800 dark:text-slate-200"><span class="font-black mr-2">${post.usuario}</span>${post.texto || ''}</p>
+                        <div id="comentarios-${postId}" class="mt-4 space-y-2 border-t border-slate-100 dark:border-slate-700 pt-4">
+                            ${comentarios.map(c => `<div class="text-sm flex gap-2"><span class="font-bold dark:text-white">${c.user}:</span><span class="dark:text-slate-300">${c.text}</span></div>`).join('')}
+                        </div>
+                        <div class="flex gap-3 items-center bg-gray-50 dark:bg-slate-700/50 rounded-2xl px-4 py-1 mt-4 border border-gray-100 dark:border-slate-700">
+                            <input type="text" id="input-${postId}" placeholder="Comentar..." class="flex-1 bg-transparent border-none py-3 text-sm outline-none dark:text-white" onkeypress="if(event.key==='Enter') ${isMeuPost ? 'comentarMeuPost' : 'comentarPostMatch'}(${postId})">
+                            <button onclick="${isMeuPost ? 'comentarMeuPost' : 'comentarPostMatch'}(${postId})" class="text-blue-500 font-bold text-sm">Postar</button>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        window.renderizarFeed = function() {
+            const meusPostsContainer = document.getElementById('meus-posts-container');
+            const feedMatchesContainer = document.getElementById('feed-container');
+            const storiesContainer = document.getElementById('stories-container');
+            const emptyState = document.getElementById('empty-feed-state');
+
+            const meusPosts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            const matchesSalvos = JSON.parse(localStorage.getItem('meus_matches')) || [];
+            const postsBloqueados = JSON.parse(localStorage.getItem('posts_bloqueados')) || [];
+            
+            meusPostsContainer.innerHTML = '';
+            feedMatchesContainer.innerHTML = '';
+            storiesContainer.innerHTML = '';
+
+            if(window.meusStoriesArray.length > 0) {
+                const storiesSeguros = window.meusStoriesArray.filter(s => s.status !== 'bloqueado');
+                if(storiesSeguros.length > 0) {
+                    const ultimaFotoObj = storiesSeguros[storiesSeguros.length - 1];
+                    const src = typeof ultimaFotoObj === 'string' ? ultimaFotoObj : ultimaFotoObj.src;
+                    storiesContainer.innerHTML += `
+                        <div class="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer" onclick="abrirMeusStories()">
+                            <div class="p-[3px] rounded-full gradient-bg">
+                                <div class="p-[2px] bg-white dark:bg-slate-900 rounded-full">
+                                    <img src="${src}" class="w-14 h-14 rounded-full object-cover">
+                                </div>
+                            </div>
+                            <span class="text-[10px] font-bold text-gray-600 dark:text-slate-400 uppercase tracking-tighter">Seu Story</span>
+                        </div>
+                    `;
+                }
+            }
+
+            meusPosts.forEach(post => {
+                if(post.status !== 'bloqueado') {
+                    meusPostsContainer.innerHTML += criarHtmlPost(post, true);
+                }
+            });
+
+            let temPostsMatches = false;
+
+            matchesSalvos.forEach(nomeMatch => {
+                const dadosUser = (window.parent && window.parent.usuariosDB) ? window.parent.usuariosDB[nomeMatch] : null;
+                const matchPostId = 'match-' + nomeMatch;
+
+                if(dadosUser && dadosUser.status !== 'bloqueado' && !postsBloqueados.includes(matchPostId)) {
+
+                    // ✅ tenta pegar ID do usuário do match (se existir no seu objeto)
+                    const matchId = dadosUser.id || dadosUser.id_usuarios || dadosUser.usuario_id || 0;
+
+                    // ✅ se tiver ID, usa foto.php (BLOB); senão cai no antigo dadosUser.foto
+                    const avatarSrc = matchId ? `foto.php?uid=${matchId}&ord=1` : (dadosUser.foto || "");
+                    const imgSrc    = matchId ? `foto.php?uid=${matchId}&ord=1` : (dadosUser.foto || "");
+
+                    storiesContainer.innerHTML += `
+                        <div class="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer" onclick="verStory('${nomeMatch}', '${imgSrc}', '${avatarSrc}', ${dadosUser.timestamp || Date.now() - 600000})">
+                            <div class="p-[3px] rounded-full gradient-bg"><div class="p-[2px] bg-white dark:bg-slate-900 rounded-full">
+                            <img src="${avatarSrc}" class="w-14 h-14 rounded-full object-cover"></div></div>
+                            <span class="text-[10px] font-bold text-gray-600 dark:text-slate-400 uppercase tracking-tighter">${nomeMatch}</span>
+                        </div>
+                    `;
+
+                    temPostsMatches = true;
+
+                    feedMatchesContainer.innerHTML += criarHtmlPost({
+                        id: matchPostId,
+                        usuario: nomeMatch,
+                        avatar: avatarSrc,
+                        imagem: imgSrc,
+                        texto: dadosUser.bio,
+                        curtidas: 124,
+                        timestamp: Date.now() - 600000,
+                        comentarios: [{user: "Admin", text: "Que foto incrível!"}]
+                    }, false);
+                }
+            });
+
+            emptyState.style.display = (meusPosts.filter(p => p.status !== 'bloqueado').length === 0 && !temPostsMatches) ? 'flex' : 'none';
+        };
+
+        window.adicionarStory = function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                if(!validarConteudoSeguro(file.name)) {
+                    alert("Atenção: O conteúdo que você está tentando postar viola nossas diretrizes de segurança e foi bloqueado.");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const novaImgData = {
+                        src: e.target.result,
+                        time: Date.now(),
+                        id: 'meu-' + Date.now(),
+                        status: 'ativo'
+                    };
+                    window.meusStoriesArray.push(novaImgData);
+                    localStorage.setItem('meus_stories_list', JSON.stringify(window.meusStoriesArray));
+                    
+                    const index = window.meusStoriesArray.length - 1;
+                    const matches = JSON.parse(localStorage.getItem('meus_matches')) || [];
+                    window.vistasMeusStories[index] = matches.slice(0, Math.floor(Math.random() * matches.length) + 1);
+                    localStorage.setItem('vistas_stories', JSON.stringify(window.vistasMeusStories));
+
+                    renderizarFeed();
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        window.abrirMeusStories = function() {
+            window.currentStoryIndex = 0;
+            const storiesSeguros = window.meusStoriesArray.filter(s => s.status !== 'bloqueado');
+
+            // ✅ avatar agora vem do servidor (foto.php)
+            mostrarStoryNaTela(storiesSeguros, "Você", MEU_AVATAR, true);
+        };
+
+        window.verStory = function(nome, foto, avatar, tempoTimestamp) {
+            window.currentStoryIndex = 0;
+            mostrarStoryNaTela([{src: foto, time: tempoTimestamp, id: nome}], nome, avatar, false);
+        };
+
+        function mostrarStoryNaTela(listaFotos, nome, avatar, isProprio) {
+            const modal = document.getElementById('story-modal');
+            const progContainer = document.getElementById('story-progress-container');
+            const footerOthers = document.getElementById('story-footer');
+            const footerSelf = document.getElementById('story-footer-self');
+            const btnExcluir = document.getElementById('btn-excluir-story');
+            
+            window.activeStories = listaFotos;
+            window.viewingProprio = isProprio;
+
+            footerOthers.classList.toggle('hidden', isProprio);
+            footerSelf.classList.toggle('hidden', !isProprio);
+            btnExcluir.classList.toggle('hidden', !isProprio);
+
+            progContainer.innerHTML = listaFotos.map((_, i) => `
+                <div class="story-progress"><div id="fill-${i}" class="story-progress-fill"></div></div>
+            `).join('');
+
+            document.getElementById('story-modal-user').innerText = nome;
+            document.getElementById('story-modal-avatar').src = avatar || "";
+            
+            atualizarUIStory();
+            modal.classList.replace('hidden', 'flex');
+            iniciarBarraProgresso();
+        }
+
+        function atualizarUIStory() {
+            if(!window.activeStories[window.currentStoryIndex]) return;
+            const item = window.activeStories[window.currentStoryIndex];
+            const imgElement = document.getElementById('story-modal-img');
+            imgElement.src = typeof item === 'string' ? item : item.src;
+            
+            document.getElementById('story-modal-time').innerText = calcularTempo(item.time || item.timestamp);
+
+            const heartIcon = document.getElementById('story-heart-icon');
+            const storyId = item.id || (window.viewingProprio ? 'meu-'+window.currentStoryIndex : 'match');
+            if(window.storiesCurtidos[storyId]) {
+                heartIcon.classList.replace('fa-regular', 'fa-solid');
+                heartIcon.classList.add('text-red-500');
+            } else {
+                heartIcon.classList.replace('fa-solid', 'fa-regular');
+                heartIcon.classList.remove('text-red-500');
+            }
+        }
+
+        window.curtirStoryAtual = function() {
+            const item = window.activeStories[window.currentStoryIndex];
+            const storyId = item.id || (window.viewingProprio ? 'meu-'+window.currentStoryIndex : 'match');
+            
+            window.storiesCurtidos[storyId] = !window.storiesCurtidos[storyId];
+            localStorage.setItem('stories_curtidos', JSON.stringify(window.storiesCurtidos));
+            atualizarUIStory();
+        };
+
+        function iniciarBarraProgresso() {
+            clearTimeout(window.storyTimeout);
+            const fills = document.querySelectorAll('.story-progress-fill');
+            
+            fills.forEach((fill, i) => {
+                fill.classList.remove('story-active-fill');
+                fill.style.width = i < window.currentStoryIndex ? '100%' : '0%';
+            });
+
+            const currentFill = document.getElementById(`fill-${window.currentStoryIndex}`);
+            if(currentFill) {
+                setTimeout(() => currentFill.classList.add('story-active-fill'), 30);
+            }
+
+            if(window.viewingProprio) {
+                const quemViu = window.vistasMeusStories[window.currentStoryIndex] || [];
+                document.getElementById('vistos-texto').innerText = `Visto por ${quemViu.length}`;
+            }
+            
+            window.storyTimeout = setTimeout(proximoStory, 5000);
+        }
+
+        window.proximoStory = function() {
+            if (window.currentStoryIndex < window.activeStories.length - 1) {
+                window.currentStoryIndex++;
+                atualizarUIStory();
+                iniciarBarraProgresso();
+            } else {
+                fecharStory();
+            }
+        };
+
+        window.storyAnterior = function() {
+            if (window.currentStoryIndex > 0) {
+                window.currentStoryIndex--;
+                atualizarUIStory();
+                iniciarBarraProgresso();
+            }
+        };
+
+        window.abrirVisualizacoes = function() {
+            clearTimeout(window.storyTimeout);
+            const container = document.getElementById('lista-espectadores');
+            const quemViu = window.vistasMeusStories[window.currentStoryIndex] || [];
+            
+            container.innerHTML = quemViu.length > 0 ? quemViu.map(nome => `
+                <div class="flex items-center justify-between animate-fade-in">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-500">
+                            ${nome[0]}
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="font-bold text-sm dark:text-white">${nome}</span>
+                            <span class="text-[10px] text-gray-400">Curtiu seu story</span>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-heart text-red-500 text-lg heart-pulse"></i>
+                </div>
+            `).join('') : '<div class="text-center py-10 text-gray-400 text-sm">Nenhum espectador ainda</div>';
+
+            document.getElementById('modal-visualizacoes').classList.replace('hidden', 'flex');
+        };
+
+        window.fecharVisualizacoes = function() {
+            document.getElementById('modal-visualizacoes').classList.replace('flex', 'hidden');
+            iniciarBarraProgresso();
+        };
+
+        window.abrirConfirmacaoExcluir = function() {
+            clearTimeout(window.storyTimeout);
+            const currentFill = document.getElementById(`fill-${window.currentStoryIndex}`);
+            if(currentFill) {
+                currentFill.style.width = getComputedStyle(currentFill).width;
+                currentFill.classList.remove('story-active-fill');
+            }
+            const modal = document.getElementById('modal-confirm-excluir');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        };
+
+        window.fecharConfirmacaoExcluir = function() {
+            const modal = document.getElementById('modal-confirm-excluir');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            iniciarBarraProgresso();
+        };
+
+        window.confirmarExclusaoStory = function() {
+            window.meusStoriesArray.splice(window.currentStoryIndex, 1);
+            delete window.vistasMeusStories[window.currentStoryIndex];
+            localStorage.setItem('meus_stories_list', JSON.stringify(window.meusStoriesArray));
+            localStorage.setItem('vistas_stories', JSON.stringify(window.vistasMeusStories));
+            
+            document.getElementById('modal-confirm-excluir').classList.add('hidden');
+            document.getElementById('modal-confirm-excluir').classList.remove('flex');
+            
+            if(window.meusStoriesArray.length === 0) {
+                fecharStory();
+            } else {
+                window.currentStoryIndex = 0;
+                abrirMeusStories();
+            }
+            renderizarFeed();
+        };
+
+        window.fecharStory = function() {
+            document.getElementById('story-modal').classList.replace('flex', 'hidden');
+            clearTimeout(window.storyTimeout);
+            window.currentStoryIndex = 0;
+        };
+
+        window.curtirMeuPost = function(postId) {
+            let meusPosts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            const post = meusPosts.find(p => p.id === postId);
+            if(post) {
+                post.curtido = !post.curtido;
+                post.curtidas = post.curtido ? (post.curtidas + 1) : (post.curtidas - 1);
+                localStorage.setItem('meus_posts', JSON.stringify(meusPosts));
+                renderizarFeed();
+            }
+        };
+
+        window.comentarMeuPost = function(postId) {
+            const input = document.getElementById(`input-${postId}`);
+            if(!input.value.trim()) return;
+
+            if(!validarConteudoSeguro(input.value)) {
+                alert("Seu comentário contém palavras proibidas.");
+                input.value = '';
+                return;
+            }
+
+            let meusPosts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            const post = meusPosts.find(p => p.id === postId);
+            if(post) {
+                post.comentarios = post.comentarios || [];
+                post.comentarios.push({user: "Você", text: input.value});
+                localStorage.setItem('meus_posts', JSON.stringify(meusPosts));
+                input.value = '';
+                renderizarFeed();
+            }
+        };
+
+        window.excluirMeuPost = function(postId) {
+            let meusPosts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            meusPosts = meusPosts.filter(p => p.id !== postId);
+            localStorage.setItem('meus_posts', JSON.stringify(meusPosts));
+            renderizarFeed();
+        };
+
+        window.curtirPostMatch = function(postId) {
+            let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            let post = posts.find(p => p.id == postId);
+
+            if (!post) {
+                post = { id: postId, curtidas: 0, comentarios: [], curtido: false };
+                posts.push(post);
+            }
+
+            if (!post.curtidas) post.curtidas = 0;
+
+            if (post.curtido) {
+                post.curtido = false;
+                post.curtidas = Math.max(0, post.curtidas - 1);
+            } else {
+                post.curtido = true;
+                post.curtidas++;
+            }
+
+            localStorage.setItem('meus_posts', JSON.stringify(posts));
+            renderizarFeed();
+        };
+
+        window.comentarPostMatch = function(postId) {
+            const input = document.getElementById(`input-${postId}`);
+            if(!input.value.trim()) return;
+
+            if(!validarConteudoSeguro(input.value)) {
+                alert("Seu comentário contém palavras proibidas.");
+                input.value = '';
+                return;
+            }
+
+            let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            let post = posts.find(p => p.id == postId);
+
+            if (!post) {
+                post = { id: postId, curtidas: 0, comentarios: [] };
+                posts.push(post);
+            }
+
+            post.comentarios = post.comentarios || [];
+            post.comentarios.push({ user: "Você", text: input.value });
+
+            localStorage.setItem('meus_posts', JSON.stringify(posts));
+            input.value = '';
+            renderizarFeed();
+        };
+
+        const verificarSegurancaInicial = () => {
+            let posts = JSON.parse(localStorage.getItem('meus_posts')) || [];
+            let alterou = false;
+            posts.forEach(p => {
+                if(!validarConteudoSeguro(p.texto) && p.status !== 'bloqueado') {
+                    p.status = 'bloqueado';
+                    alterou = true;
+                }
+            });
+            if(alterou) localStorage.setItem('meus_posts', JSON.stringify(posts));
+        };
+
+        verificarSegurancaInicial();
+        renderizarFeed();
+        window.addEventListener('storage', () => renderizarFeed());
+        setInterval(renderizarFeed, 30000);
+    })();
+</script>
+</body>
+</html>

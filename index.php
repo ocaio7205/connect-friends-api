@@ -1,0 +1,720 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . "/bootstrap.php";
+$meuId = require_login();     // ✅ tira sessionStorage (acessoPermitido) e usa sessão de verdade
+$csrf  = csrf_token();        // ✅ CSRF pronto pro fetch (POST)
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Connect Friends | Official</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
+        :root { 
+            --brand-gradient: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 50%, #a855f7 100%); 
+            --friends-gradient: linear-gradient(to right, #3b82f6, #a855f7);
+        }
+
+        /* ESTILOS MODO NOTURNO */
+        body.dark-mode { background: #0f172a; color: #f1f5f9; }
+        body.dark-mode aside, body.dark-mode nav.lg\:hidden, body.dark-mode .mobile-header { 
+            background: #1e293b; border-color: #334155; 
+        }
+        body.dark-mode .bg-white { background-color: #1e293b !important; }
+        body.dark-mode .text-gray-800 { color: #f1f5f9 !important; }
+        body.dark-mode .bg-slate-50 { background-color: #0f172a !important; }
+
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: #f8fafc; 
+            margin: 0; padding: 0; color: #1e293b;
+            transition: background 0.3s ease;
+        }
+        
+        .friends-text { 
+            background: var(--friends-gradient); 
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent; 
+            display: inline-block;
+            padding-right: 0.15em;
+        }
+        .gradient-bg { background: var(--brand-gradient); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        
+        .active-link { 
+            background: rgba(59, 130, 246, 0.08) !important; 
+            color: #3b82f6 !important; 
+            position: relative;
+        }
+        .active-link::after {
+            content: ''; position: absolute; right: 0; top: 25%; height: 50%; width: 4px;
+            background: #3b82f6; border-radius: 4px 0 0 4px;
+        }
+
+        .nav-item { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); margin: 0 12px; border-radius: 12px !important; }
+
+        @keyframes photoJoinLeft { from { transform: translateX(-150%) scale(0.5); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+        @keyframes photoJoinRight { from { transform: translateX(150%) scale(0.5); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+        
+        .run-photo-left { animation: photoJoinLeft 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .run-photo-right { animation: photoJoinRight 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        .photo-container-match { display: flex; align-items: center; justify-content: center; gap: 4px; position: relative; }
+        .match-photo-half { width: 140px; height: 240px; object-fit: cover; border: 4px solid white; transition: all 0.5s ease; z-index: 10; }
+        .left-half { border-radius: 100px 0 0 100px; }
+        .right-half { border-radius: 0 100px 100px 0; }
+
+        @keyframes infinityGlow {
+            0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 0.3; filter: drop-shadow(0 0 10px #3b82f6); }
+            50% { transform: translate(-50%, -50%) rotate(180deg) scale(1.05); opacity: 0.6; filter: drop-shadow(0 0 25px #a855f7); }
+            100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); opacity: 0.3; filter: drop-shadow(0 0 10px #3b82f6); }
+        }
+        .infinity-loader {
+            position: absolute; top: 52%; left: 50%; width: 420px; height: 420px;
+            z-index: 5; pointer-events: none; animation: infinityGlow 6s linear infinite;
+        }
+        .infinity-path {
+            stroke-dasharray: 100;
+            animation: dash 3s linear infinite;
+        }
+        @keyframes dash { to { stroke-dashoffset: -200; } }
+    </style>
+</head>
+<body id="main-body" class="overflow-hidden" style="display: none;">
+
+    <header class="lg:hidden mobile-header fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-100 z-[100] px-6 py-4 flex justify-between items-center">
+        <h1 class="font-extrabold italic friends-text text-xl">Connect Friends</h1>
+        <button onclick="toggleDarkMode()" class="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-lg transition-all active:scale-90">
+            <i class="fa-solid fa-moon text-slate-600" id="dark-icon-mobile"></i>
+        </button>
+    </header>
+
+    <div class="flex h-screen w-screen">
+        <aside class="hidden lg:flex flex-col w-72 bg-white border-r border-slate-100 py-10 justify-between shrink-0 z-10 shadow-sm">
+            <div class="space-y-10">
+                <div class="flex items-center justify-between px-8">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 flex-shrink-0 flex items-center justify-center">
+                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                                <defs>
+                                    <linearGradient id="logoInfinito" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#2dd4bf" /> 
+                                        <stop offset="50%" style="stop-color:#3b82f6" /> 
+                                        <stop offset="100%" style="stop-color:#a855f7" /> 
+                                    </linearGradient>
+                                </defs>
+                                <path d="M18 7C16.2 7 14.5 8.5 12 11C9.5 8.5 7.8 7 6 7C3.5 7 2 9 2 12C2 15 3.5 17 6 17C7.8 17 9.5 15.5 12 13C14.5 15.5 16.2 17 18 17C20.5 17 22 15 22 12C22 9 20.5 7 18 7Z" 
+                                    stroke="url(#logoInfinito)" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <h1 class="font-extrabold flex flex-col leading-tight">
+                            <span class="text-slate-400 text-[10px] uppercase tracking-[0.3em]">Connect</span>
+                            <span class="text-2xl italic friends-text">Friends</span>
+                        </h1>
+                    </div>
+                    <button onclick="toggleDarkMode()" class="text-slate-400 hover:text-blue-500 transition-colors">
+                        <i class="fa-solid fa-moon text-xl" id="dark-icon-pc"></i>
+                    </button>
+                </div>
+
+                <nav class="flex flex-col gap-1">
+                    <button onclick="loadPage('inicio', this)" class="nav-item flex items-center gap-4 px-6 py-4 text-base font-bold text-gray-800 active-link">
+                        <i class="fa-solid fa-house"></i> Início
+                    </button>
+                    <button onclick="loadPage('explorar', this)" class="nav-item flex items-center gap-4 px-6 py-4 text-base font-bold text-slate-400">
+                        <i class="fa-solid fa-compass"></i> Explorar
+                    </button>
+                    <button onclick="loadPage('likes', this)" class="nav-item flex items-center gap-4 px-6 py-4 text-base font-bold text-slate-400">
+                        <i class="fa-solid fa-heart"></i> Curtidas
+                        <span class="ml-auto bg-amber-400 text-[8px] text-white px-2 py-0.5 rounded-full font-black">PRO</span>
+                    </button>
+                    <button onclick="loadPage('chat', this)" class="nav-item flex items-center gap-4 px-6 py-4 text-base font-bold text-slate-400">
+                        <i class="fa-solid fa-message"></i> Chat
+                    </button>
+                    <button onclick="loadPage('perfil', this)" class="nav-item flex items-center gap-4 px-6 py-4 text-base font-bold text-slate-400">
+                        <i class="fa-solid fa-user"></i> Perfil
+                    </button>
+                </nav>
+            </div>
+            
+            <div class="px-6 space-y-3">
+                <button id="btn-sair-voltar" onclick="fazerLogout()" class="w-full py-3 bg-slate-50 text-slate-400 rounded-2xl font-bold text-xs hover:bg-red-50 hover:text-red-500 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-right-from-bracket"></i> SAIR
+                </button>
+                <button onclick="abrirModalPost()" class="w-full py-4 gradient-bg text-white rounded-2xl font-extrabold text-sm shadow-lg hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest">NOVO POST</button>
+            </div>
+        </aside>
+
+        <main class="flex-1 relative overflow-hidden flex flex-col pt-16 lg:pt-0">
+            <div id="main-content" class="flex-1 overflow-y-auto no-scrollbar pb-24 lg:pb-0"></div>
+
+            <nav class="lg:hidden fixed bottom-0 w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-100 dark:border-slate-800 flex justify-around items-center py-4 z-50 rounded-t-3xl shadow-2xl">
+                <button onclick="loadPage('inicio', this)" class="nav-item p-3 text-blue-500 active-link"><i class="fa-solid fa-house"></i></button>
+                <button onclick="loadPage('explorar', this)" class="nav-item p-3 text-slate-400"><i class="fa-solid fa-compass"></i></button>
+                
+                <button onclick="abrirModalPost()" class="w-14 h-14 gradient-bg text-white rounded-2xl shadow-xl flex items-center justify-center -translate-y-4 active:scale-90 transition-all border-4 border-white dark:border-slate-900">
+                    <i class="fa-solid fa-plus text-2xl"></i>
+                </button>
+
+                <button onclick="loadPage('chat', this)" class="nav-item p-3 text-slate-400"><i class="fa-solid fa-message"></i></button>
+                <button onclick="loadPage('perfil', this)" class="nav-item p-3 text-slate-400"><i class="fa-solid fa-user"></i></button>
+            </nav>
+        </main>
+    </div>
+
+    <div id="modal-post" class="fixed inset-0 z-[400] hidden items-center justify-center px-4">
+        <div class="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onclick="fecharModalPost()"></div>
+        <div class="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl p-8">
+            <h3 class="text-2xl font-black text-slate-800 dark:text-white mb-6 italic">Novo Post</h3>
+            <div class="space-y-4">
+                <div onclick="document.getElementById('post-image-input').click()" class="w-full aspect-square bg-slate-100 dark:bg-slate-800 rounded-[2rem] border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center cursor-pointer overflow-hidden group">
+                    <img id="post-preview" class="hidden w-full h-full object-cover">
+                    <div id="post-placeholder" class="text-center group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-image text-4xl text-slate-300 mb-2"></i>
+                        <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Escolher Foto</p>
+                    </div>
+                </div>
+                <input type="file" id="post-image-input" class="hidden" accept="image/*" onchange="previewPostImage(this)">
+                <textarea id="post-caption" placeholder="Escreva uma legenda..." class="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24 dark:text-white"></textarea>
+                <button onclick="salvarPost()" class="w-full py-4 gradient-bg text-white font-black rounded-2xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all uppercase text-xs tracking-widest">PUBLICAR AGORA</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="match-screen" class="fixed inset-0 z-[200] hidden flex flex-col items-center justify-center bg-slate-950/98 backdrop-blur-3xl px-6">
+        <div class="infinity-loader">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <path class="infinity-path" d="M18 7C16.2 7 14.5 8.5 12 11C9.5 8.5 7.8 7 6 7C3.5 7 2 9 2 12C2 15 3.5 17 6 17C7.8 17 9.5 15.5 12 13C14.5 15.5 16.2 17 18 17C20.5 17 22 15 22 12C22 9 20.5 7 18 7Z" 
+                    stroke="url(#logoInfinito)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+            </svg>
+        </div>
+        <h1 class="text-5xl lg:text-8xl font-black italic friends-text z-10 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]">Conectados</h1>
+        <div class="photo-container-match my-12 z-10">
+            <img id="match-my-photo" src="" class="match-photo-half left-half shadow-2xl border-white/20">
+            <img id="match-their-photo" src="" class="match-photo-half right-half shadow-2xl border-white/20">
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div class="w-6 h-6 bg-white rounded-full blur-md animate-ping"></div>
+            </div>
+        </div>
+        <div class="flex flex-col gap-5 z-10 w-full max-w-xs">
+            <button onclick="irParaChatDireto()" class="py-4 bg-gradient-to-r from-teal-400 via-blue-500 to-purple-600 text-white rounded-2xl font-black shadow-[0_10px_30px_rgba(59,130,246,0.4)] hover:scale-105 active:scale-95 transition-all uppercase tracking-widest text-sm">Enviar Mensagem</button>
+            <button onclick="closeMatch()" class="text-slate-400 font-bold hover:text-white transition-all uppercase tracking-tighter text-xs">Continuar</button>
+        </div>
+    </div>
+
+    <div id="modal-perfil-detalhado" class="fixed inset-0 z-[9999] hidden items-center justify-center bg-slate-950/90 backdrop-blur-lg px-4">
+        <div class="absolute inset-0" onclick="fecharPerfilDetalhado()"></div>
+        <div class="relative bg-white dark:bg-[#0f172a] w-full max-w-[450px] h-[90vh] rounded-[3rem] overflow-y-auto no-scrollbar shadow-2xl border border-slate-200 dark:border-slate-800">
+            
+            <div class="sticky top-0 left-0 right-0 z-50 flex justify-between items-center p-6 bg-gradient-to-b from-white dark:from-[#0f172a] to-transparent">
+                <div class="relative">
+                    <button onclick="toggleMenuDenuncia()" class="w-10 h-10 bg-black/5 dark:bg-black/40 backdrop-blur-md text-slate-800 dark:text-white rounded-full flex items-center justify-center border border-black/5 dark:border-white/10">
+                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                    </button>
+                    <div id="menu-denuncia" class="hidden absolute top-12 left-0 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+                        <button onclick="denunciarUsuario()" class="w-full p-4 text-left text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-3">
+                            <i class="fa-solid fa-flag text-amber-500"></i> Denunciar
+                        </button>
+                        <div class="h-[1px] bg-slate-100 dark:bg-slate-800"></div>
+                        <button onclick="bloquearUsuario()" class="w-full p-4 text-left text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition flex items-center gap-3">
+                            <i class="fa-solid fa-ban"></i> Bloquear
+                        </button>
+                    </div>
+                </div>
+                <button onclick="fecharPerfilDetalhado()" class="w-10 h-10 bg-black/5 dark:bg-black/40 backdrop-blur-md text-slate-800 dark:text-white rounded-full flex items-center justify-center border border-black/5 dark:border-white/10">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="px-6 pb-10 pt-2">
+                <div class="grid grid-cols-3 gap-3 mb-8" id="grade-fotos-container">
+                    <?php for ($i=1; $i<=6; $i++): ?>
+                    <div class="aspect-[2/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <img id="detalhe-foto-<?= $i ?>" src="" class="w-full h-full object-cover">
+                    </div>
+                    <?php endfor; ?>
+                </div>
+
+                <div class="mb-6">
+                    <h2 class="text-slate-800 dark:text-white text-3xl font-black italic flex items-center gap-2">
+                        <span id="detalhe-nome"></span>, <span id="detalhe-idade"></span>
+                        <i class="fa-solid fa-circle-check text-blue-500 text-xl"></i>
+                    </h2>
+                    <p id="detalhe-distancia" class="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1"></p>
+                </div>
+
+                <div class="space-y-3 mb-8">
+                    <h4 class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Sobre</h4>
+                    <p id="detalhe-bio" class="text-slate-600 dark:text-slate-300 leading-relaxed font-medium"></p>
+                </div>
+
+                <div class="space-y-3 mb-8">
+                    <h4 class="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500">Interesses</h4>
+                    <div id="detalhe-interesses" class="flex flex-wrap gap-2"></div>
+                </div>
+
+                <button onclick="irParaChatPeloPerfil()" class="w-full py-5 gradient-bg text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-lg active:scale-95 transition-all">Mandar Mensagem</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="premium-modal" class="fixed inset-0 z-[300] hidden items-center justify-center px-4">
+        <div class="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onclick="closePremium()"></div>
+        <div class="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl transform transition-all scale-95 opacity-0" id="modal-content">
+            <div class="gradient-bg p-8 text-center text-white relative">
+                <div class="w-16 h-16 bg-white/20 backdrop-blur-lg rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl shadow-xl">
+                    <i class="fa-solid fa-crown text-yellow-300"></i>
+                </div>
+                <h4 class="text-2xl font-black tracking-tight">Connect Gold</h4>
+                <p class="text-white/80 text-[10px] font-bold uppercase tracking-widest mt-1">Para liberar: <span id="feature-name"></span></p>
+            </div>
+            <div class="p-8">
+                <div class="space-y-4 mb-8">
+                    <div class="flex items-center gap-4">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center text-blue-500"><i class="fa-solid fa-check text-xs"></i></div>
+                        <div><p class="text-sm font-bold text-slate-700 dark:text-slate-200">Curtidas Ilimitadas</p><p class="text-[10px] text-slate-400">Sem limites diários</p></div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-500/20 flex items-center justify-center text-purple-500"><i class="fa-solid fa-message text-xs"></i></div>
+                        <div><p class="text-sm font-bold text-slate-700 dark:text-slate-200">Mensagens Diretas</p><p class="text-[10px] text-slate-400">Pule a fila do match</p></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-8">
+                    <label class="relative cursor-pointer">
+                        <input type="radio" name="plan" id="plan-mensal" class="peer hidden" checked>
+                        <div class="p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 peer-checked:border-blue-500 peer-checked:bg-blue-50 dark:peer-checked:bg-blue-500/10 transition-all text-center">
+                            <p class="text-[10px] font-black text-slate-400 uppercase mb-1">Mensal</p>
+                            <p class="text-xl font-black text-slate-800 dark:text-white">R$ 19,90</p>
+                        </div>
+                    </label>
+                    <label class="relative cursor-pointer">
+                        <input type="radio" name="plan" id="plan-anual" class="peer hidden">
+                        <div class="p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 peer-checked:border-blue-500 peer-checked:bg-blue-50 dark:peer-checked:bg-blue-500/10 transition-all text-center">
+                            <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-400 text-white text-[8px] font-black px-2 py-1 rounded-full uppercase">Melhor Valor</div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase mb-1">Anual</p>
+                            <p class="text-xl font-black text-slate-800 dark:text-white">R$ 199,90</p>
+                        </div>
+                    </label>
+                </div>
+                <button onclick="processarAssinatura()" class="w-full py-4 gradient-bg text-white font-black rounded-2xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all mb-4 uppercase text-xs tracking-widest">ASSINAR AGORA</button>
+                <button onclick="closePremium()" class="w-full text-slate-400 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600">Voltar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================
+        // CONFIG / HELPERS (API)
+        // =========================
+        const CSRF_TOKEN = <?= json_encode($csrf, JSON_UNESCAPED_UNICODE) ?>;
+
+        async function apiFetch(url, options = {}) {
+            const opts = {
+                credentials: "include",
+                headers: {
+                    ...(options.headers || {})
+                },
+                ...options
+            };
+
+            // Se for POST/PUT/PATCH/DELETE, manda CSRF
+            const method = (opts.method || "GET").toUpperCase();
+            if (!["GET","HEAD","OPTIONS"].includes(method)) {
+                opts.headers["X-CSRF-Token"] = CSRF_TOKEN;
+
+                // Se não setou content-type e tem body objeto, vira JSON
+                if (opts.body && typeof opts.body === "object" && !(opts.body instanceof FormData)) {
+                    opts.headers["Content-Type"] = "application/json";
+                    opts.body = JSON.stringify(opts.body);
+                }
+            }
+
+            const r = await fetch(url, opts);
+            const ct = r.headers.get("content-type") || "";
+            const isJson = ct.includes("application/json");
+            const data = isJson ? await r.json() : { ok:false, error:"Resposta inválida" };
+
+            if (!data || data.ok !== true) {
+                // Se cair 401 em API, manda pra capa.php
+                if (r.status === 401) {
+                    window.location.replace("capa.php");
+                    return null;
+                }
+            }
+            return data;
+        }
+
+        // =========================
+        // LÓGICA DE POSTAGEM (API)
+        // =========================
+        function abrirModalPost() {
+            document.getElementById('modal-post').classList.remove('hidden');
+            document.getElementById('modal-post').classList.add('flex');
+        }
+
+        function fecharModalPost() {
+            document.getElementById('modal-post').classList.add('hidden');
+        }
+
+        function previewPostImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('post-preview');
+                    preview.src = e.target.result;
+                    preview.classList.remove('hidden');
+                    document.getElementById('post-placeholder').classList.add('hidden');
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        async function salvarPost() {
+            const preview = document.getElementById('post-preview');
+            const legenda = document.getElementById('post-caption').value || "";
+
+            if (!preview.src || preview.classList.contains('hidden')) {
+                alert("Por favor, selecione uma foto!");
+                return;
+            }
+
+            // ✅ Troca localStorage por API (posts table)
+            // Endpoint sugerido: /api/posts_create.php
+            const res = await apiFetch("/api/posts_create.php", {
+                method: "POST",
+                body: {
+                    imagem: preview.src,     // base64 (igual você já fazia)
+                    legenda: legenda
+                }
+            });
+
+            if (!res) return;
+            if (!res.ok) {
+                alert(res.error || "Erro ao publicar.");
+                return;
+            }
+
+            fecharModalPost();
+            preview.src = "";
+            preview.classList.add('hidden');
+            document.getElementById('post-placeholder').classList.remove('hidden');
+            document.getElementById('post-caption').value = "";
+
+            // Recarrega a página atual (sem mexer no design)
+            const activeBtn = document.querySelector('.active-link');
+            if (activeBtn) activeBtn.click();
+            else loadPage('inicio');
+        }
+
+        // =========================
+        // ME (API) - tira localStorage de userName/userPhoto/userBio
+        // =========================
+        let ME_CACHE = null;
+
+        async function getMe() {
+            if (ME_CACHE) return ME_CACHE;
+            const res = await apiFetch("/api/me.php", { method: "GET" });
+            if (res && res.ok) {
+                ME_CACHE = res.user || null;
+            }
+            return ME_CACHE;
+        }
+
+        async function injectUserData() {
+            const me = await getMe();
+            if (!me) return;
+
+            const nome = me.username || "Você";
+            const foto = me.foto_perfil || "https://i.pravatar.cc/150?u=me";
+            const idade = (me.idade ?? "");
+            const bio = (me.bio ?? "Bem-vindo!");
+
+            const nameEl = document.getElementById('profile-name');
+            if (nameEl) nameEl.innerText = nome;
+
+            const bioEl = document.getElementById('profile-bio');
+            if (bioEl) {
+                const idadeTxt = idade !== "" ? `<b>${idade} anos</b><br>` : "";
+                bioEl.innerHTML = `${idadeTxt}✨ ${escapeHtml(bio)}`;
+            }
+
+            const imgEl = document.getElementById('foto-preview');
+            if (imgEl) imgEl.src = foto;
+
+            const matchMyPhoto = document.getElementById('match-my-photo');
+            if (matchMyPhoto) matchMyPhoto.src = foto;
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replaceAll("&","&amp;")
+                .replaceAll("<","&lt;")
+                .replaceAll(">","&gt;")
+                .replaceAll('"',"&quot;")
+                .replaceAll("'","&#039;");
+        }
+
+        // =========================
+        // DARK MODE (preferência visual)
+        // (mantive só isso em localStorage pq não é dado de usuário do app)
+        // =========================
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
+            const iconMobile = document.getElementById('dark-icon-mobile');
+            const iconPc = document.getElementById('dark-icon-pc');
+            [iconMobile, iconPc].forEach(icon => {
+                if(icon) {
+                    if(isDark) icon.classList.replace('fa-moon', 'fa-sun');
+                    else icon.classList.replace('fa-sun', 'fa-moon');
+                }
+            });
+        }
+
+        // =========================
+        // LOAD PAGES (agora em PHP)
+        // =========================
+        window.loadPage = async function(pageName, element) {
+            const container = document.getElementById('main-content');
+            container.style.opacity = '0.5';
+            try {
+                // ✅ antes era .html — agora seu projeto é PHP
+                const response = await fetch(`${pageName}.php`, { credentials: "include" });
+                const html = await response.text();
+                
+                container.innerHTML = html;
+
+                // reinicializações que suas páginas internas usam
+                setTimeout(() => {
+                    if (typeof carregarMeusPosts === "function") carregarMeusPosts();
+                    if (typeof carregarDadosPerfil === "function") carregarDadosPerfil();
+                    if (typeof renderizarGradeEdicao === "function") renderizarGradeEdicao();
+                }, 50);
+                
+                const scripts = container.querySelectorAll('script');
+                for (const oldScript of scripts) {
+                    const newScript = document.createElement('script');
+                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                }
+
+                if (pageName === 'explorar') {
+                    setTimeout(() => {
+                        if (typeof renderizarUsuarios === 'function') renderizarUsuarios();
+                        else if (typeof carregarUsuarios === 'function') carregarUsuarios();
+                    }, 50);
+                }
+
+                container.style.opacity = '1';
+
+                // ✅ agora puxa do banco
+                injectUserData();
+                
+                document.querySelectorAll('.nav-item').forEach(btn => 
+                    btn.classList.remove('active-link', 'text-blue-500')
+                );
+                if (element) element.classList.add('active-link', 'text-blue-500');
+
+            } catch (e) { 
+                console.error("Erro ao carregar:", e);
+                container.innerHTML = `<div class="p-10 text-center text-slate-400">Erro ao carregar página.</div>`;
+            }
+        }
+
+        // =========================
+        // MATCH / CHAT (sem localStorage)
+        // =========================
+        let TEMP_MATCH = null;
+        let CHAT_ATIVO = null;
+
+        function triggerMatch() {
+            const matchScreen = document.getElementById('match-screen');
+            const myPhoto = document.getElementById('match-my-photo');
+            const theirPhoto = document.getElementById('match-their-photo');
+            const currentImg = document.getElementById('profile-img');
+            const nameElement = document.getElementById('profile-name');
+            const currentName = nameElement ? nameElement.innerText.split(',')[0].trim() : "Alguém";
+
+            if (currentImg) theirPhoto.src = currentImg.src;
+
+            // ✅ seu lado vem do /api/me.php (injectUserData já coloca)
+            TEMP_MATCH = {
+                nome: currentName,
+                foto: currentImg ? currentImg.src : ""
+            };
+
+            matchScreen.classList.remove('hidden');
+            matchScreen.classList.add('flex');
+            myPhoto.classList.add('run-photo-left');
+            theirPhoto.classList.add('run-photo-right');
+        }
+
+        async function irParaChatDireto() {
+            if (window.event) window.event.preventDefault();
+            if (!TEMP_MATCH) return;
+
+            // ✅ aqui o ideal é criar/pegar match no backend e navegar pro chat
+            // Endpoint sugerido: /api/matches_ensure.php (cria match se existir)
+            // e depois /api/chat_open.php (retorna match_id)
+            //
+            // Como você ainda não mandou o chat.php, eu deixei o "gancho":
+            CHAT_ATIVO = TEMP_MATCH;
+
+            closeMatch();
+            const btnChat = document.querySelector('button[onclick*="chat"]');
+            window.loadPage('chat', btnChat);
+        }
+
+        async function irParaChatPeloPerfil() {
+            if (window.event) window.event.preventDefault();
+            const nome = document.getElementById('detalhe-nome').innerText;
+            const foto = document.getElementById('detalhe-foto-1').src;
+
+            CHAT_ATIVO = { nome, foto };
+
+            fecharPerfilDetalhado();
+            const btnChat = document.querySelector('button[onclick*="chat"]');
+            window.loadPage('chat', btnChat);
+        }
+
+        function closeMatch() {
+            document.getElementById('match-screen').classList.add('hidden');
+        }
+
+        function openPremium(feature) {
+            document.getElementById('feature-name').innerText = feature;
+            const modal = document.getElementById('premium-modal');
+            const content = document.getElementById('modal-content');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => {
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function closePremium() {
+            const content = document.getElementById('modal-content');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => { document.getElementById('premium-modal').classList.add('hidden'); }, 300);
+        }
+
+        // =========================
+        // PERFIL DETALHADO (API)
+        // =========================
+        async function fetchPerfilPorNome(nome) {
+            // Endpoint sugerido: /api/user_by_name.php?nome=...
+            const res = await apiFetch(`/api/user_by_name.php?nome=${encodeURIComponent(nome)}`, { method: "GET" });
+            if (res && res.ok) return res.user || null;
+            return null;
+        }
+
+        window.abrirPerfilDetalhado = async function(nomeOuObjeto) {
+            let perfil = null;
+            let nomeBusca = "";
+
+            if (typeof nomeOuObjeto === 'object' && nomeOuObjeto !== null) {
+                // quando explorar/listas já passarem o objeto
+                nomeBusca = nomeOuObjeto.nome || nomeOuObjeto.username || "";
+                perfil = nomeOuObjeto;
+            } else {
+                nomeBusca = String(nomeOuObjeto || "");
+                if (nomeBusca) perfil = await fetchPerfilPorNome(nomeBusca);
+            }
+
+            if (!perfil) return;
+
+            // Normaliza campos (sem mexer no design)
+            const idade = perfil.idade ?? perfil.age ?? "24";
+            const bio = perfil.bio ?? "";
+            const distancia = perfil.distancia ?? "Perto de você";
+
+            document.getElementById('detalhe-nome').innerText = nomeBusca || (perfil.username || "");
+            document.getElementById('detalhe-idade').innerText = idade;
+            document.getElementById('detalhe-bio').innerText = bio;
+            document.getElementById('detalhe-distancia').innerText = distancia;
+
+            const fotos = perfil.fotos || perfil.photos || [];
+            const primeira = perfil.foto || perfil.foto_perfil || fotos[0] || "";
+            const listaFotos = (Array.isArray(fotos) && fotos.length > 0) ? fotos : [primeira];
+
+            for (let i = 1; i <= 6; i++) {
+                const imgEl = document.getElementById(`detalhe-foto-${i}`);
+                const fotoUrl = listaFotos[i-1] || listaFotos[0] || "";
+                imgEl.src = fotoUrl;
+
+                // efeito visual igual ao seu
+                if (!listaFotos[i-1]) imgEl.parentElement.style.opacity = "0.4";
+                else imgEl.parentElement.style.opacity = "1";
+            }
+
+            const containerInteresses = document.getElementById('detalhe-interesses');
+            containerInteresses.innerHTML = "";
+            const interesses = perfil.interesses || ["Amizade", "Conversar"];
+            interesses.forEach(tag => {
+                containerInteresses.innerHTML += `<span class="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-full border border-slate-200 dark:border-slate-700">${escapeHtml(tag)}</span>`;
+            });
+
+            const modal = document.getElementById('modal-perfil-detalhado');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            modal.style.zIndex = "9999";
+        };
+
+        window.fecharPerfilDetalhado = function() {
+            document.getElementById('modal-perfil-detalhado').classList.add('hidden');
+        };
+
+        window.toggleMenuDenuncia = function() {
+            document.getElementById('menu-denuncia').classList.toggle('hidden');
+        }
+
+        window.denunciarUsuario = function() {
+            alert(`Perfil enviado para análise.`);
+            fecharPerfilDetalhado();
+        }
+
+        window.bloquearUsuario = function() {
+            if(confirm(`Deseja bloquear este usuário?`)) {
+                alert(`Bloqueado com sucesso.`);
+                fecharPerfilDetalhado();
+                window.location.reload();
+            }
+        }
+
+        window.processarAssinatura = function() {
+            alert("Redirecionando para o Mercado Pago...");
+        }
+
+        // =========================
+        // LOGOUT (real)
+        // =========================
+        function fazerLogout() {
+            window.location.replace('logout.php');
+        }
+
+        // =========================
+        // BOOT
+        // =========================
+        window.onload = async () => {
+            document.getElementById('main-body').style.display = 'block';
+
+            const firstNav = document.querySelector('aside .nav-item') || document.querySelector('nav button');
+            window.loadPage('inicio', firstNav);
+
+            if (localStorage.getItem('darkMode') === 'enabled') toggleDarkMode();
+
+            // já injeta user real
+            injectUserData();
+        };
+    </script>
+</body>
+</html>
