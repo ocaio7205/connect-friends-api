@@ -350,8 +350,7 @@
 
     function getProfilesFromDB() {
         let bancoGlobal = {};
-        const usuarioLogadoNome = localStorage.getItem('userName') || localStorage.getItem('usuario_logado') || "";
-        const logadoMinusculo = usuarioLogadoNome.toLowerCase().trim();
+        const usuarioLogadoNome = localStorage.getItem('usuario_logado') || "";
 
         try {
             if (window.parent && window.parent.usuariosDB) {
@@ -369,36 +368,46 @@
         const dadosLogado = bancoGlobal[usuarioLogadoNome] || {};
         const meuInteresse = (dadosLogado.interesse || "Todos").toLowerCase();
 
-        let listaFormatada = Object.keys(bancoGlobal).filter(nome => {
-            const nomeMinusculo = nome.toLowerCase().trim();
+        let listaFormatada = Object.keys(bancoGlobal)
+        .filter(nome => {
+            const nomeBanco = nome.toLowerCase().trim();
+            const nomeLogado = usuarioLogadoNome.toLowerCase().trim();
             const u = bancoGlobal[nome];
 
-            if (nomeMinusculo === logadoMinusculo) return false;
-            if (nomeMinusculo === "caio" || nomeMinusculo.includes("caio")) return false;
+            if (!u) return false;
+            if (nomeBanco === nomeLogado) return false;
+            if (!u.foto && (!u.fotos || u.fotos.length === 0)) return false;
             if (vistos.includes(nome) || vistos.includes(`${nome}, ${u.idade}`)) return false;
-            
-            const isBloqueado = listaBloqueados.some(b => b.nome.toLowerCase().includes(nomeMinusculo));
-            const isMatch = matchesExistentes.some(m => m.toLowerCase().trim() === nomeMinusculo);
+
+            const isBloqueado = listaBloqueados.some(b => 
+b.nome.toLowerCase().split(',')[0].trim() === nomeBanco
+);
+            const isMatch = matchesExistentes.some(m => m.toLowerCase().trim() === nomeBanco);
+
             if (isBloqueado || isMatch) return false;
 
             const generoDela = (u.genero || "Mulher").toLowerCase();
             if (meuInteresse === "homens") return generoDela === "homem";
             if (meuInteresse === "mulheres") return generoDela === "mulher";
-            
+
             return true;
-        }).map(nome => {
+        })
+        .map(nome => {
             const u = bancoGlobal[nome];
-            let fotosReais = (u.fotos && u.fotos.length > 0) ? u.fotos : [u.foto];
+            let fotosReais = (u.fotos && u.fotos.length > 0)
+? u.fotos
+: [u.foto || "https://i.imgur.com/6VBx3io.png"];
             return {
                 name: `${nome}, ${u.idade || '22'}`,
-                imgs: fotosReais, 
+                imgs: fotosReais,
                 dist: "Perto de você",
                 job: u.profissao || "Membro Connect",
                 bio: u.bio || "Olá!",
                 interests: u.interesses || ["Amizade"],
                 tag: "Novo"
             };
-        });
+        })
+        .sort(() => Math.random() - 0.5);
 
         return listaFormatada;
     }
@@ -453,7 +462,7 @@
     function openProfileSheet() {
         const p = profiles[currentIdx];
         if(!p) return;
-        const isGold = localStorage.getItem('usuario_gold') === 'true' || true; 
+        const isGold = localStorage.getItem('usuario_gold') === 'true';
         const overlay = document.getElementById('premium-overlay');
         const conteudo = document.getElementById('conteudo-perfil');
         if (!isGold) { overlay.classList.remove('hidden'); conteudo.classList.add('premium-blur'); }
@@ -566,4 +575,4 @@
     card.addEventListener('touchcancel', handleTouchEnd);
 </script>
 </body>
-</html>
+</html> 
