@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -576,3 +577,604 @@ b.nome.toLowerCase().split(',')[0].trim() === nomeBanco
 </script>
 </body>
 </html> 
+=======
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . "/bootstrap.php";
+
+$meuId = require_login();
+$conn  = db();
+
+/** Segurança (headers) */
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: same-origin");
+header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
+header("X-Frame-Options: SAMEORIGIN");
+
+// CSP (ajuste se precisar)
+header("Content-Security-Policy: "
+  ."default-src 'self'; "
+  ."img-src 'self' data: https:; "
+  ."style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+  ."font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
+  ."script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; "
+  ."connect-src 'self'; "
+  ."frame-ancestors 'self'; "
+);
+
+$csrf = csrf_token();
+
+/**
+ * Puxa perfis do banco:
+ * - não inclui eu
+ * - não inclui quem eu bloqueei
+ * - não inclui quem me bloqueou
+ * - não inclui quem já está em match comigo (status ativo)
+ */
+$sql = "
+  SELECT
+    u.id_usuarios,
+    u.username,
+    u.bio,
+    u.genero,
+    u.data_nascimento
+  FROM usuarios u
+  WHERE u.id_usuarios <> ?
+    AND NOT EXISTS (
+      SELECT 1 FROM bloqueios b
+      WHERE b.bloqueador_id = ? AND b.bloqueado_id = u.id_usuarios
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM bloqueios b2
+      WHERE b2.bloqueador_id = u.id_usuarios AND b2.bloqueado_id = ?
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM matches m
+      WHERE m.status = 'ativo'
+        AND (
+          (m.user1_id = ? AND m.user2_id = u.id_usuarios)
+          OR
+          (m.user2_id = ? AND m.user1_id = u.id_usuarios)
+        )
+    )
+  ORDER BY RAND()
+  LIMIT 60
+";
+
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("iiiii", $meuId, $meuId, $meuId, $meuId, $meuId);
+$stmt->execute();
+$res = $stmt->get_result();
+$users = $res->fetch_all(MYSQLI_ASSOC);
+
+$userIds = array_map(fn($u) => (int)$u['id_usuarios'], $users);
+
+// fotos por usuário (ordem 1..6)
+$fotosPorUser = [];
+if (!empty($userIds)) {
+  $in = implode(',', array_fill(0, count($userIds), '?'));
+  $types = str_repeat('i', count($userIds));
+
+  $sqlFotos = "SELECT usuario_id, ordem FROM fotos_perfil WHERE usuario_id IN ($in) ORDER BY usuario_id, ordem ASC";
+  $stmtF = $conn->prepare($sqlFotos);
+  $stmtF->bind_param($types, ...$userIds);
+  $stmtF->execute();
+  $rf = $stmtF->get_result();
+  while ($row = $rf->fetch_assoc()) {
+    $uid = (int)$row['usuario_id'];
+    $ord = (int)$row['ordem'];
+    // endpoint que você vai ter no projeto pra servir o blob
+    $fotosPorUser[$uid][] = "foto.php?uid={$uid}&ord={$ord}";
+  }
+}
+
+// interesses por usuário
+$interessesPorUser = [];
+if (!empty($userIds)) {
+  $in = implode(',', array_fill(0, count($userIds), '?'));
+  $types = str_repeat('i', count($userIds));
+
+  $sqlInt = "
+    SELECT ui.usuario_id, i.nome
+    FROM usuarios_interesses ui
+    INNER JOIN interesses i ON i.id = ui.interesse_id
+    WHERE ui.usuario_id IN ($in)
+    ORDER BY ui.usuario_id, i.nome ASC
+  ";
+  $stmtI = $conn->prepare($sqlInt);
+  $stmtI->bind_param($types, ...$userIds);
+  $stmtI->execute();
+  $ri = $stmtI->get_result();
+  while ($row = $ri->fetch_assoc()) {
+    $uid = (int)$row['usuario_id'];
+    $interessesPorUser[$uid][] = (string)$row['nome'];
+  }
+}
+
+function calc_idade(?string $data): int {
+  if (!$data) return 0;
+  try {
+    $nasc = new DateTime($data);
+    $hoje = new DateTime();
+    return (int)$hoje->diff($nasc)->y;
+  } catch (Throwable $e) {
+    return 0;
+  }
+}
+
+$profiles = [];
+foreach ($users as $u) {
+  $uid = (int)$u['id_usuarios'];
+  $idade = calc_idade($u['data_nascimento'] ?? null);
+
+  $imgs = $fotosPorUser[$uid] ?? [];
+  // se não tiver foto, coloca fallback
+  if (empty($imgs)) {
+    $imgs = ["https://i.pravatar.cc/800?u={$uid}"];
+  }
+
+  $profiles[] = [
+    "id" => $uid,
+    "name" => (string)$u['username'],
+    "idade" => $idade,
+    "imgs" => array_slice($imgs, 0, 6),
+    "dist" => "Perto de você",
+    "job" => "Membro Connect",
+    "bio" => !empty($u['bio']) ? (string)$u['bio'] : "Olá!",
+    "interests" => array_slice($interessesPorUser[$uid] ?? ["Amizade"], 0, 12),
+    "tag" => "Novo",
+  ];
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Explorar | Connect Friends</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; overflow: hidden; }
+    .dark body { background-color: #0f172a; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .menu-opcoes {
+      position: absolute; top: 60px; right: 24px; background: #1e293b;
+      border: 1px solid #334155; border-radius: 1.5rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 100; overflow: hidden; width: 180px;
+    }
+    #profile-card {
+      backface-visibility: hidden; -webkit-backface-visibility: hidden; transform: translate3d(0,0,0);
+      touch-action: none; user-select: none; background-color: #1e293b;
+      transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.5s ease;
+    }
+    #modalFiltros {
+      display: none; position: fixed; inset: 0; z-index: 99999;
+      background-color: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center;
+    }
+    .conteudo-filtros {
+      background: #1e293b; width: 90%; max-width: 380px; border-radius: 2.5rem;
+      padding: 30px; border: 1px solid #334155; color: white;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 1);
+    }
+    .campo-filtro { margin-bottom: 20px; }
+    .campo-filtro label {
+      display: flex; justify-content: space-between; font-size: 11px; font-weight: 800;
+      text-transform: uppercase; color: #94a3b8; margin-bottom: 8px;
+    }
+    .campo-filtro span { color: #3b82f6; }
+    input[type="range"] {
+      width: 100%; height: 6px; background: #334155; border-radius: 5px;
+      appearance: none; accent-color: #3b82f6;
+    }
+    .btn-action { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .btn-action:hover { transform: translateY(-5px) scale(1.1); }
+    .btn-action:active { transform: scale(0.9); }
+    .btn-like-glow { position: relative; }
+    .btn-like-glow::after {
+      content: ''; position: absolute; inset: -4px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 50%; z-index: -1; opacity: 0.3; filter: blur(8px);
+      animation: pulseGlow 2s infinite;
+    }
+    @keyframes pulseGlow { 0%{transform:scale(1);opacity:.3} 50%{transform:scale(1.15);opacity:.5} 100%{transform:scale(1);opacity:.3} }
+    @keyframes softFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+    .float-animation { animation: softFloat 3s ease-in-out infinite; }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-[#0f172a]">
+
+<div id="toast-confirmacao" class="fixed top-10 left-1/2 -translate-x-1/2 z-[10001] bg-slate-900/90 backdrop-blur-xl border border-white/10 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 transition-all duration-500 opacity-0 pointer-events-none translate-y-[-20px]">
+  <div id="toast-icon-bg" class="w-8 h-8 rounded-full flex items-center justify-center">
+    <i id="toast-icon" class="fa-solid text-xs"></i>
+  </div>
+  <p id="toast-mensagem" class="text-white text-[10px] font-black uppercase tracking-widest"></p>
+</div>
+
+<div class="fade-in h-screen max-w-2xl mx-auto flex flex-col justify-center px-4 py-6">
+  <div class="mb-6 flex justify-between items-end px-2">
+    <div>
+      <h2 class="text-4xl font-[900] text-slate-800 tracking-tighter dark:text-white">Explorar</h2>
+      <div class="flex items-center gap-2 mt-1">
+        <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+        <p class="text-[11px] text-slate-400 font-extrabold uppercase tracking-[0.2em]">Novas conexões hoje</p>
+      </div>
+    </div>
+    <button onclick="abrirFiltros()" class="btn-action w-12 h-12 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-slate-500 hover:text-blue-500 transition-all dark:bg-slate-800 dark:border-slate-700 pointer-events-auto">
+      <i class="fa-solid fa-sliders text-lg"></i>
+    </button>
+  </div>
+
+  <div id="profile-card" class="relative w-full h-[70vh] rounded-[3.5rem] overflow-hidden shadow-[0_35px_60px_-15px_rgba(0,0,0,0.5)] bg-slate-800 group transition-all">
+    <div id="photo-indicators" class="absolute top-6 left-6 right-6 z-30 flex gap-2"></div>
+    <div class="absolute inset-0 z-20 flex pointer-events-none">
+      <div onclick="changePhoto(-1)" class="w-1/2 h-full cursor-pointer pointer-events-auto"></div>
+      <div onclick="changePhoto(1)" class="w-1/2 h-full cursor-pointer pointer-events-auto"></div>
+    </div>
+    <img id="profile-img" src="" class="absolute inset-0 w-full h-full object-cover transition duration-500" alt="Foto de Perfil">
+    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8 lg:p-12 z-10 pointer-events-none">
+      <div class="mb-32">
+        <div class="flex items-center gap-3 mb-4">
+          <h3 id="profile-name" class="text-4xl lg:text-5xl font-black text-white tracking-tight"></h3>
+          <div id="profile-tag" class="bg-blue-500/30 backdrop-blur-md border border-white/20 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest"></div>
+        </div>
+        <div class="flex flex-wrap gap-3 text-white/90 mb-6">
+          <div class="flex items-center gap-2 bg-black/20 backdrop-blur-lg px-4 py-2 rounded-xl border border-white/10">
+            <i class="fa-solid fa-location-dot text-blue-400 text-xs"></i>
+            <span id="profile-dist" class="font-bold text-xs tracking-wide"></span>
+          </div>
+          <div class="flex items-center gap-2 bg-black/20 backdrop-blur-lg px-4 py-2 rounded-xl border border-white/10">
+            <i class="fa-solid fa-graduation-cap text-purple-400 text-xs"></i>
+            <span id="profile-job" class="font-bold text-xs tracking-wide"></span>
+          </div>
+        </div>
+        <p id="profile-bio" class="text-white/80 text-lg leading-relaxed max-w-md font-medium"></p>
+      </div>
+    </div>
+
+    <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center gap-3 lg:gap-4 z-30 px-4">
+      <button onclick="nextProfile('dislike')" class="btn-action w-14 h-14 bg-white/10 backdrop-blur-2xl border border-white/20 rounded-full flex items-center justify-center text-white text-xl hover:bg-red-500 hover:border-red-400 transition-all shadow-2xl">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <button onclick="openProfileSheet()" class="btn-action w-14 h-14 bg-white/10 backdrop-blur-2xl border border-white/20 rounded-full flex flex-col items-center justify-center text-white/80 hover:bg-white/20 transition-all">
+        <i class="fa-solid fa-chevron-up text-lg animate-bounce"></i>
+        <span class="text-[7px] font-black uppercase tracking-tighter mt-0.5">Perfil</span>
+      </button>
+
+      <button onclick="nextProfile('like')" class="btn-action btn-like-glow w-24 h-24 bg-white rounded-full flex flex-col items-center justify-center shadow-[0_15px_30px_-5px_rgba(59,130,246,0.4)] transition-all">
+        <div class="w-12 h-12 flex items-center justify-center z-10">
+          <svg viewBox="0 0 24 24" class="w-full h-full">
+            <path d="M18 7C16.2 7 14.5 8.5 12 11C9.5 8.5 7.8 7 6 7C3.5 7 2 9 2 12C2 15 3.5 17 6 17C7.8 17 9.5 15.5 12 13C14.5 15.5 16.2 17 18 17C20.5 17 22 15 22 12C22 9 20.5 7 18 7Z" stroke="#3b82f6" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="text-[9px] font-black uppercase text-blue-500 tracking-tighter">Connect</span>
+      </button>
+
+      <button onclick="abrirFiltros()" class="btn-action w-14 h-14 bg-white/10 backdrop-blur-2xl border border-white/20 rounded-full flex items-center justify-center text-blue-400 text-xl hover:bg-blue-400 hover:text-white transition-all shadow-2xl">
+        <i class="fa-solid fa-sliders"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="modalFiltros" onclick="fecharFiltrosFora(event)">
+  <div class="conteudo-filtros" onclick="event.stopPropagation()">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-xl font-black italic tracking-tighter text-white">FILTROS</h2>
+      <button onclick="fecharFiltros()" class="text-slate-500 hover:text-white">
+        <i class="fa-solid fa-circle-xmark text-2xl"></i>
+      </button>
+    </div>
+
+    <div class="campo-filtro">
+      <label>Idade Mínima <span id="valIdadeMin">18</span></label>
+      <input type="range" id="idadeMin" min="18" max="60" value="18" oninput="atualizarLabelsFiltros()">
+    </div>
+
+    <div class="campo-filtro">
+      <label>Idade Máxima <span id="valIdadeMax">60</span></label>
+      <input type="range" id="idadeMax" min="18" max="60" value="60" oninput="atualizarLabelsFiltros()">
+    </div>
+
+    <div class="campo-filtro">
+      <label>Mínimo de Fotos <span id="valFotos">1</span></label>
+      <input type="range" id="fotosMin" min="1" max="6" value="1" oninput="atualizarLabelsFiltros()">
+    </div>
+
+    <button onclick="aplicarFiltros()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-lg mt-4">
+      Aplicar Preferências
+    </button>
+    <button onclick="limparFiltros()" class="w-full py-3 mt-2 bg-transparent border border-slate-600 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] rounded-2xl hover:bg-slate-800 transition-all">
+      Limpar Filtros
+    </button>
+  </div>
+</div>
+
+<div id="modal-perfil-explorar" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+  <div class="bg-[#1e293b] w-full max-w-lg rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-700 max-h-[90vh] overflow-y-auto no-scrollbar relative">
+
+    <button onclick="closeProfileSheet()" class="absolute top-3 left-6 z-50 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md border border-white/20">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+
+    <button onclick="toggleMenuOpcoes()" class="absolute top-3 right-6 z-50 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md border border-white/20">
+      <i class="fa-solid fa-ellipsis-vertical"></i>
+    </button>
+
+    <div id="dropdown-opcoes" class="hidden menu-opcoes">
+      <button onclick="confirmarBloqueio()" class="w-full text-left px-5 py-4 text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-500/10 transition">
+        <i class="fa-solid fa-ban mr-2"></i> Bloquear
+      </button>
+    </div>
+
+    <div id="conteudo-perfil" class="p-6 pt-14 space-y-6">
+      <div class="space-y-3">
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Momentos</p>
+        <div id="sheet-grade-fotos" class="grid grid-cols-3 gap-3"></div>
+      </div>
+
+      <div class="px-1">
+        <h2 id="sheet-nome" class="text-3xl font-black text-white"></h2>
+        <p id="sheet-bio" class="text-slate-400 mt-3 leading-relaxed text-sm italic"></p>
+      </div>
+
+      <div class="space-y-3 px-1 pb-6">
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Interesses</p>
+        <div id="sheet-interesses" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <div class="px-1 pb-6">
+        <button onclick="curtirNoSheet()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl transition-all shadow-lg">
+          Conectar (Like)
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // Dados vindos do PHP (banco)
+  const PROFILES_ORIG = <?= json_encode($profiles, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+  const CSRF_TOKEN = <?= json_encode($csrf) ?>;
+
+  let profiles = Array.isArray(PROFILES_ORIG) ? PROFILES_ORIG.slice() : [];
+  let currentIdx = 0;
+  let currentPhotoIdx = 0;
+
+  const card = document.getElementById('profile-card');
+
+  function abrirFiltros() { document.getElementById('modalFiltros').style.display = 'flex'; }
+  function fecharFiltros() { document.getElementById('modalFiltros').style.display = 'none'; }
+  function fecharFiltrosFora(e) { if(e.target.id === 'modalFiltros') fecharFiltros(); }
+
+  function atualizarLabelsFiltros() {
+    document.getElementById('valIdadeMin').innerText = document.getElementById('idadeMin').value;
+    document.getElementById('valIdadeMax').innerText = document.getElementById('idadeMax').value;
+    document.getElementById('valFotos').innerText = document.getElementById('fotosMin').value;
+  }
+
+  function exibirToast(msg, tipo = "error") {
+    const toast = document.getElementById('toast-confirmacao');
+    const iconBg = document.getElementById('toast-icon-bg');
+    const icon = document.getElementById('toast-icon');
+    document.getElementById('toast-mensagem').innerText = msg;
+
+    if (tipo === "success") {
+      iconBg.className = "w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center";
+      icon.className = "fa-solid fa-check text-blue-500 text-xs";
+    } else {
+      iconBg.className = "w-8 h-8 bg-red-500/20 rounded-full flex items-center justify-center";
+      icon.className = "fa-solid fa-ban text-red-500 text-xs";
+    }
+
+    toast.classList.remove('opacity-0', 'pointer-events-none');
+    toast.style.transform = 'translate(-50%, 0)';
+    setTimeout(() => {
+      toast.classList.add('opacity-0', 'pointer-events-none');
+      toast.style.transform = 'translate(-50%, -20px)';
+    }, 2000);
+  }
+
+  function aplicarFiltros() {
+    fecharFiltros();
+    const minI = parseInt(document.getElementById('idadeMin').value, 10);
+    const maxI = parseInt(document.getElementById('idadeMax').value, 10);
+    const minF = parseInt(document.getElementById('fotosMin').value, 10);
+
+    const filtrados = PROFILES_ORIG.filter(p => {
+      const idade = parseInt(p.idade || 0, 10);
+      const fotos = Array.isArray(p.imgs) ? p.imgs.length : 0;
+      return idade >= minI && idade <= maxI && fotos >= minF;
+    });
+
+    if (filtrados.length > 0) {
+      profiles = filtrados;
+      currentIdx = 0;
+      currentPhotoIdx = 0;
+      updateProfileUI();
+      exibirToast("Filtros Aplicados", "success");
+    } else {
+      exibirToast("Nenhum perfil encontrado", "error");
+    }
+  }
+
+  function limparFiltros() {
+    fecharFiltros();
+    document.getElementById('idadeMin').value = 18;
+    document.getElementById('idadeMax').value = 60;
+    document.getElementById('fotosMin').value = 1;
+    atualizarLabelsFiltros();
+
+    profiles = PROFILES_ORIG.slice();
+    currentIdx = 0;
+    currentPhotoIdx = 0;
+    updateProfileUI();
+    exibirToast("Filtros Limpos", "success");
+  }
+
+  function updateProfileUI() {
+    if (!profiles || !profiles[currentIdx]) {
+      card.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-white p-10 text-center">
+        <i class="fa-solid fa-earth-americas text-6xl mb-4 text-blue-500"></i>
+        <h3 class="text-2xl font-black">Fim da lista</h3>
+        <p class="text-slate-400 mt-2">Não há novos perfis no momento.</p>
+        <button onclick="limparFiltros()" class="mt-8 bg-blue-600 px-8 py-3 rounded-2xl font-black">RECOMEÇAR</button>
+      </div>`;
+      return;
+    }
+
+    const p = profiles[currentIdx];
+    document.getElementById('profile-img').src = (p.imgs && p.imgs[currentPhotoIdx]) ? p.imgs[currentPhotoIdx] : (p.imgs?.[0] || '');
+    document.getElementById('profile-name').innerText = `${p.name}${p.idade ? ', ' + p.idade : ''}`;
+    document.getElementById('profile-dist').innerText = p.dist || '';
+    document.getElementById('profile-job').innerText = p.job || '';
+    document.getElementById('profile-bio').innerText = p.bio || '';
+    document.getElementById('profile-tag').innerText = p.tag || '';
+
+    const indicatorContainer = document.getElementById('photo-indicators');
+    indicatorContainer.innerHTML = '';
+    const limit = Math.min((p.imgs || []).length, 6);
+    for (let i = 0; i < limit; i++) {
+      const bar = document.createElement('div');
+      bar.className = `h-1 flex-1 rounded-full transition-all duration-300 ${i === currentPhotoIdx ? 'bg-white' : 'bg-white/30'}`;
+      indicatorContainer.appendChild(bar);
+    }
+  }
+
+  function changePhoto(direction) {
+    const p = profiles[currentIdx];
+    if (!p) return;
+    const limit = Math.min((p.imgs || []).length, 6);
+    const newIdx = currentPhotoIdx + direction;
+    if (newIdx >= 0 && newIdx < limit) {
+      currentPhotoIdx = newIdx;
+      updateProfileUI();
+    }
+  }
+
+  function openProfileSheet() {
+    const p = profiles[currentIdx];
+    if (!p) return;
+
+    document.getElementById('sheet-nome').innerText = `${p.name}${p.idade ? ', ' + p.idade : ''}`;
+    document.getElementById('sheet-bio').innerText = p.bio || '';
+
+    const intContainer = document.getElementById('sheet-interesses');
+    intContainer.innerHTML = '';
+    (p.interests || []).forEach(it => {
+      intContainer.innerHTML += `<span class="px-3 py-1 bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase rounded-full border border-blue-500/20">${it}</span>`;
+    });
+
+    const gradeContainer = document.getElementById('sheet-grade-fotos');
+    gradeContainer.innerHTML = '';
+    (p.imgs || []).slice(0, 6).forEach(img => {
+      gradeContainer.innerHTML += `<img src="${img}" class="aspect-square object-cover rounded-2xl w-full">`;
+    });
+
+    document.getElementById('modal-perfil-explorar').classList.remove('hidden');
+  }
+
+  function closeProfileSheet() {
+    document.getElementById('modal-perfil-explorar').classList.add('hidden');
+    document.getElementById('dropdown-opcoes').classList.add('hidden');
+  }
+
+  function toggleMenuOpcoes() {
+    document.getElementById('dropdown-opcoes').classList.toggle('hidden');
+  }
+
+  async function postarMatch(usuarioId) {
+    const body = new URLSearchParams();
+    body.set('csrf_token', CSRF_TOKEN);
+    body.set('usuario_id', String(usuarioId));
+
+    const resp = await fetch('match.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+
+    // se seu match.php responder JSON, ok. Se responder redirect, também ok.
+    return resp.ok;
+  }
+
+  async function postarBloqueio(usuarioId) {
+    const body = new URLSearchParams();
+    body.set('csrf_token', CSRF_TOKEN);
+    body.set('usuario_id', String(usuarioId));
+
+    const resp = await fetch('bloquear.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    return resp.ok;
+  }
+
+  async function confirmarBloqueio() {
+    const p = profiles[currentIdx];
+    if (!p) return;
+
+    const ok = await postarBloqueio(p.id);
+    if (ok) {
+      exibirToast("Bloqueado", "success");
+      closeProfileSheet();
+      nextProfile('dislike');
+    } else {
+      exibirToast("Falha ao bloquear", "error");
+    }
+  }
+
+  async function curtirNoSheet() {
+    closeProfileSheet();
+    await nextProfile('like');
+  }
+
+  async function nextProfile(action) {
+    const p = profiles[currentIdx];
+    if (!p) return;
+
+    if (action === 'like') {
+      const ok = await postarMatch(p.id);
+      if (!ok) {
+        exibirToast("Falha ao conectar", "error");
+        return;
+      }
+      exibirToast("Conectado!", "success");
+    }
+
+    card.style.transform = action === 'dislike'
+      ? 'translateX(-150%) rotate(-20deg)'
+      : 'translateX(150%) rotate(20deg)';
+    card.style.opacity = '0';
+
+    setTimeout(() => {
+      currentIdx++;
+      currentPhotoIdx = 0;
+      updateProfileUI();
+
+      card.style.transition = 'none';
+      card.style.transform = 'translateX(0) scale(0.95)';
+      setTimeout(() => {
+        card.style.transition = 'all 0.5s cubic-bezier(0.23, 1, 0.32, 1)';
+        card.style.transform = 'translateX(0) scale(1)';
+        card.style.opacity = '1';
+      }, 50);
+    }, 400);
+  }
+
+  // ✅ Não use window.onload aqui porque explorar.php é carregado via innerHTML
+(function initExplorar() {
+  atualizarLabelsFiltros();
+  updateProfileUI();
+})();
+</script>
+</body>
+</html>
+>>>>>>> 665cc278062e96d09826f42e686cf449116b9ab9
