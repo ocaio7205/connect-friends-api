@@ -129,17 +129,10 @@ function require_login(): int {
   exit;
 }
 
-/* ========= E-mail (PHPMailer) ========= */
 require_once __DIR__ . '/mailer.php';
 
-/* ========= Inicializa segurança automaticamente ========= */
 security_headers();
 start_session_secure();
-
-/**
- * Connect Friends - bootstrap.php
- * Render + Railway MySQL
- */
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
