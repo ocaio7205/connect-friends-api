@@ -110,7 +110,36 @@ app.get("/", (req, res) => {
 /* ========================================
    🚀 INICIALIZAÇÃO SERVIDOR
 ======================================== */
+/* ========================================
+   👥 BANCO TEMPORÁRIO DE USUÁRIOS
+======================================== */
 
+let usuarios = [];
+
+/* ========================================
+   📥 LISTAR USUÁRIOS
+======================================== */
+
+app.get("/usuarios", (req, res) => {
+  res.json(usuarios);
+});
+
+/* ========================================
+   ➕ CRIAR USUÁRIO
+======================================== */
+
+app.post("/usuarios", (req, res) => {
+  const novoUsuario = req.body;
+
+  usuarios.push(novoUsuario);
+
+  console.log("Novo usuário:", novoUsuario);
+
+  res.json({
+    message: "Usuário salvo com sucesso",
+    usuario: novoUsuario
+  });
+});
 const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, () => {
