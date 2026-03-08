@@ -7,10 +7,14 @@
 |--------------------------------------------------------------------------
 */
 
-const DB_HOST = 'localhost';
-const DB_USER = 'root';
-const DB_PASS = '';
-const DB_NAME = 'connect_friends';
+$host = getenv('DB_HOST');
+$user = getenv('DB_USER');
+$pass = getenv('DB_PASS');
+$db   = getenv('DB_NAME');
+$port = getenv('DB_PORT') ?: 3306;
+
+$conexao = new mysqli($host, $user, $pass, $db, $port);
+$conexao->set_charset('utf8mb4');
 
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
