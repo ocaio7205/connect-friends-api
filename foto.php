@@ -1,6 +1,6 @@
 <<<<<<< HEAD
 <?php
-declare(strict_types=1);
+
 
 require_once __DIR__ . "/bootstrap.php";
 
@@ -63,7 +63,7 @@ if (!empty($url)) {
 http_response_code(404);
 =======
 <?php
-declare(strict_types=1);
+
 
 require_once __DIR__ . "/bootstrap.php";
 

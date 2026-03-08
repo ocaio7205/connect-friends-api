@@ -1,6 +1,6 @@
 <<<<<<< HEAD
 <?php
-declare(strict_types=1);
+
 
 require_once __DIR__ . "/bootstrap.php";
 
@@ -28,7 +28,7 @@ $stmt->execute();
 
 =======
 <?php
-declare(strict_types=1);
+
 
 require_once __DIR__ . "/bootstrap.php";
 

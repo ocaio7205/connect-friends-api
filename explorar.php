@@ -579,7 +579,7 @@ b.nome.toLowerCase().split(',')[0].trim() === nomeBanco
 </html> 
 =======
 <?php
-declare(strict_types=1);
+
 
 require_once __DIR__ . "/bootstrap.php";
 

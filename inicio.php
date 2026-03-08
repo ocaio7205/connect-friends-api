@@ -1,6 +1,6 @@
 <<<<<<< HEAD
 <?php
-declare(strict_types=1);
+
 require_once __DIR__ . "/bootstrap.php";
 
 $meuId = require_login(); // ID do usuário logado
@@ -675,7 +675,7 @@ $meuId = require_login(); // ID do usuário logado
 </html> 
 =======
 <?php
-declare(strict_types=1);
+
 require_once __DIR__ . "/bootstrap.php";
 
 $meuId = require_login(); // ID do usuário logado
