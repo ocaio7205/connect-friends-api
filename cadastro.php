@@ -233,7 +233,7 @@ if (function_exists('is_logged_in') && is_logged_in()) {
             try {
                 const email = document.getElementById('login-email').value;
                 const senha = document.getElementById('login-senha').value;
-                const data = await apiPost('api/api_login.php', { email, senha });
+                const data = await apiPost('/api/api_login.php', { email, senha });
                 window.location.href = data.tem_perfil ? 'index.php' : 'criacaoperfil.php';
             } catch (err) {
                 Swal.fire({ icon: 'error', title: 'Erro', text: err.message, background: '#0f172a', color: '#fff' });
@@ -262,7 +262,7 @@ if (function_exists('is_logged_in') && is_logged_in()) {
 
             try {
                 // Aqui o POST vai direto para o cadastro do banco
-                await apiPost('api/api_cadastro.php', {
+                await apiPost('/api/api_cadastro.php', {
                     username: nome,
                     email: email,
                     senha: senha,
